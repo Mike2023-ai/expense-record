@@ -1,3 +1,4 @@
+import io
 import shutil
 from importlib import metadata
 from pathlib import Path
@@ -8,6 +9,7 @@ import textwrap
 import zipfile
 import sysconfig
 
+from expense_record.app import create_app
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -136,3 +138,57 @@ def test_index_page_loads_from_installed_package(tmp_path):
     )
 
     subprocess.run([str(venv_python), "-c", script], check=True, cwd=PROJECT_ROOT)
+
+
+def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda image_bytes: ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "row": {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        "lines": ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
+    }
+
+
+def test_save_endpoint_persists_row(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+    ]
+
+
+def test_rows_endpoint_lists_saved_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    client.post(
+        "/api/save",
+        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+    )
+
+    response = client.get("/api/rows")
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+    ]
