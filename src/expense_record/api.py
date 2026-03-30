@@ -32,19 +32,42 @@ def extract_row():
     if image is None or image.filename == "":
         return jsonify({"error": "No image provided."}), 400
 
-    lines = run_ocr_lines(image.read())
-    row = parse_expense_row(lines)
+    try:
+        lines = run_ocr_lines(image.read())
+        row = parse_expense_row(lines)
+    except Exception:
+        current_app.logger.exception("OCR extraction failed")
+        return jsonify({"error": "OCR extraction failed."}), 500
+
     return jsonify({"row": row.to_dict(), "lines": lines})
+
+
+def _coerce_save_field(payload: object, field: str) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+
+    if field not in payload:
+        return ""
+
+    value = payload[field]
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return None
 
 
 @api.post("/save")
 def save_row():
     payload = request.get_json(silent=True) or {}
-    row = ExpenseRow(
-        date=str(payload.get("date", "")).strip(),
-        merchant_item=str(payload.get("merchant_item", "")).strip(),
-        amount=str(payload.get("amount", "")).strip(),
-    )
+    date = _coerce_save_field(payload, "date")
+    merchant_item = _coerce_save_field(payload, "merchant_item")
+    amount = _coerce_save_field(payload, "amount")
+
+    if date is None or merchant_item is None or amount is None:
+        return jsonify({"error": "Invalid save payload."}), 400
+
+    row = ExpenseRow(date=date, merchant_item=merchant_item, amount=amount)
     storage = _storage()
     storage.append_row(row)
     rows = [item.to_dict() for item in storage.list_rows()]

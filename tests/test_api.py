@@ -10,6 +10,7 @@ import zipfile
 import sysconfig
 
 from expense_record.app import create_app
+from expense_record.config import DEFAULT_EXCEL_PATH
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -162,6 +163,35 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
     }
 
 
+def test_extract_endpoint_rejects_missing_image(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post("/api/extract", data={}, content_type="multipart/form-data")
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "No image provided."}
+
+
+def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    def raise_ocr(_image_bytes: bytes) -> list[str]:
+        raise RuntimeError("ocr failed")
+
+    monkeypatch.setattr("expense_record.api.run_ocr_lines", raise_ocr)
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 500
+    assert response.get_json() == {"error": "OCR extraction failed."}
+
+
 def test_save_endpoint_persists_row(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -175,6 +205,19 @@ def test_save_endpoint_persists_row(tmp_path):
     assert response.get_json()["rows"] == [
         {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
     ]
+
+
+def test_save_endpoint_rejects_malformed_payload(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={"date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50"},
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid save payload."}
 
 
 def test_rows_endpoint_lists_saved_rows(tmp_path):
@@ -192,3 +235,10 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
     assert response.get_json()["rows"] == [
         {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
     ]
+
+
+def test_create_app_uses_default_excel_path_without_override():
+    app = create_app({"TESTING": True})
+
+    assert app.config["EXCEL_PATH"] == DEFAULT_EXCEL_PATH
+    assert app.config["EXCEL_PATH"] == Path.home() / ".expense-screenshot-tool" / "expenses.xlsx"

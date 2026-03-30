@@ -3,8 +3,8 @@
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_EXCEL_PATH = BASE_DIR / "data" / "expenses.xlsx"
+APP_DATA_DIR = Path.home() / ".expense-screenshot-tool"
+DEFAULT_EXCEL_PATH = APP_DATA_DIR / "expenses.xlsx"
 
 
 class Config:
