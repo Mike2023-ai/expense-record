@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date as date_type, datetime as datetime_type
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
@@ -30,7 +31,7 @@ class ExcelExpenseStorage:
             date, merchant_item, amount = values[:3]
             rows.append(
                 ExpenseRow(
-                    date="" if date is None else str(date),
+                    date=self._normalize_date_value(date),
                     merchant_item="" if merchant_item is None else str(merchant_item),
                     amount="" if amount is None else str(amount),
                 )
@@ -68,3 +69,12 @@ class ExcelExpenseStorage:
     def _write_headers(self, worksheet) -> None:
         for column, header in enumerate(self.headers, start=1):
             worksheet.cell(row=1, column=column, value=header)
+
+    def _normalize_date_value(self, value) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime_type):
+            return value.date().isoformat()
+        if isinstance(value, date_type):
+            return value.isoformat()
+        return str(value)

@@ -96,7 +96,7 @@ def _extract_amount(lines: list[str]) -> str:
 
 
 def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
-    for line in lines:
+    for index, line in enumerate(lines):
         if line == date or line == amount:
             continue
         if _looks_like_date_or_time(line) or _looks_like_amount_line(line):
@@ -104,6 +104,8 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
         if _contains_payment_noise(line):
             continue
         if _contains_merchant_metadata(line):
+            continue
+        if _is_split_merchant_label_piece(lines, index):
             continue
         if _contains_merchandise_signal(line):
             merchant_item = _strip_merchant_label(line)
@@ -152,3 +154,12 @@ def _strip_merchant_label(line: str) -> str:
         if line.startswith(label):
             return line[len(label) :].strip(" ：:，,")
     return line
+
+
+def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
+    line = lines[index]
+    if line == "商户" and index + 1 < len(lines) and lines[index + 1] == "名称":
+        return True
+    if line == "名称" and index > 0 and lines[index - 1] == "商户":
+        return True
+    return False

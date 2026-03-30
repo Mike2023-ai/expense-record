@@ -1,5 +1,6 @@
 from expense_record.models import ExpenseRow
 from expense_record.storage import ExcelExpenseStorage
+from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
 
 
@@ -110,4 +111,22 @@ def test_excel_storage_initializes_blank_existing_expenses_sheet(tmp_path):
     assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
         ("date", "merchant/item", "amount"),
         ("2026-03-03", "Blank Sheet Shop", "13.00"),
+    ]
+
+
+def test_excel_storage_normalizes_typed_date_cells(tmp_path):
+    workbook_path = tmp_path / "expenses.xlsx"
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "expenses"
+    worksheet.append(["date", "merchant/item", "amount"])
+    worksheet.append([date(2026, 3, 4), "Typed Date Shop", "14.00"])
+    worksheet.append([datetime(2026, 3, 5, 15, 30), "Typed Datetime Shop", "15.00"])
+    workbook.save(workbook_path)
+
+    storage = ExcelExpenseStorage(workbook_path)
+
+    assert storage.list_rows() == [
+        ExpenseRow(date="2026-03-04", merchant_item="Typed Date Shop", amount="14.00"),
+        ExpenseRow(date="2026-03-05", merchant_item="Typed Datetime Shop", amount="15.00"),
     ]
