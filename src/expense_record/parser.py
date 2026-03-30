@@ -30,6 +30,14 @@ PAYMENT_NOISE = (
     "账单",
     "零钱",
 )
+MERCHANT_LABELS = (
+    "商户名称",
+    "商家名称",
+    "商户",
+    "商家",
+    "门店名称",
+    "交易对象",
+)
 
 
 def parse_expense_row(text_lines: str | Iterable[str]) -> ExpenseRow:
@@ -86,7 +94,7 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
         if _contains_payment_noise(line):
             continue
         if _contains_merchandise_signal(line):
-            return line
+            return _strip_merchant_label(line)
     return ""
 
 
@@ -119,3 +127,10 @@ def _match_amount(line: str) -> str:
         if AMOUNT_BODY_RE.fullmatch(amount):
             return amount.removeprefix("-")
     return ""
+
+
+def _strip_merchant_label(line: str) -> str:
+    for label in MERCHANT_LABELS:
+        if line.startswith(label):
+            return line[len(label) :].strip(" ：:，,")
+    return line
