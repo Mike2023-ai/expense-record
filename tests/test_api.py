@@ -30,6 +30,213 @@ def test_index_page_contains_review_form_container():
     assert b'id="expense-form"' in response.data
 
 
+def test_frontend_ignores_stale_selection_work_and_resets_save_state():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            textContent: "",
+            innerHTML: "",
+            src: "",
+            style: {},
+            files: [],
+            listeners: {},
+            children: [],
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "expense-form": makeElement("expense-form"),
+          "date-input": makeElement("date-input"),
+          "merchant-input": makeElement("merchant-input"),
+          "amount-input": makeElement("amount-input"),
+          "records-body": makeElement("records-body"),
+        };
+        elements["preview-image"].hidden = true;
+
+        const fileReaderInstances = [];
+        class FakeFileReader {
+          constructor() {
+            this.result = "";
+            this.onload = null;
+            this.onerror = null;
+            fileReaderInstances.push(this);
+          }
+          readAsDataURL(file) {
+            this.file = file;
+          }
+        }
+
+        class FakeFile {
+          constructor(parts, name, options) {
+            this.parts = parts;
+            this.name = name;
+            this.type = options?.type ?? "";
+          }
+        }
+
+        class FakeFormData {
+          append() {}
+        }
+
+        const pendingExtractResponses = [];
+        const fetchCalls = [];
+
+        function makeResponse(row) {
+          return {
+            ok: true,
+            json: async () => ({ row }),
+          };
+        }
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: FakeFileReader,
+          File: FakeFile,
+          FormData: FakeFormData,
+          setTimeout,
+          clearTimeout,
+          fetch: async (url, options = {}) => {
+            fetchCalls.push({ url, options });
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/extract") {
+              return await new Promise((resolve) => {
+                pendingExtractResponses.push(resolve);
+              });
+            }
+            if (url === "/api/save") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              return {
+                tagName: String(tag).toUpperCase(),
+                textContent: "",
+                colSpan: 0,
+                children: [],
+                appendChild(child) {
+                  this.children.push(child);
+                },
+              };
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        const fileInputHandler = elements["file-input"].listeners.change;
+        const extractHandler = elements["extract-button"].listeners.click;
+
+        function selectScreenshot(name) {
+          fileInputHandler({
+            target: {
+              files: [
+                {
+                  name,
+                  type: "image/png",
+                },
+              ],
+            },
+          });
+        }
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          selectScreenshot("first.png");
+          assert.strictEqual(elements["preview-caption"].textContent, "first.png");
+          assert.strictEqual(elements["date-input"].value, "");
+          assert.strictEqual(elements["save-button"].disabled, true);
+          assert.strictEqual(fileReaderInstances.length, 1);
+
+          extractHandler();
+          selectScreenshot("second.png");
+
+          fileReaderInstances[0].result = "data:first";
+          fileReaderInstances[0].onload();
+          await flush();
+          assert.strictEqual(elements["preview-image"].src, "");
+          assert.strictEqual(elements["preview-caption"].textContent, "second.png");
+          assert.strictEqual(elements["date-input"].value, "");
+          assert.strictEqual(elements["save-button"].disabled, true);
+
+          assert.strictEqual(fileReaderInstances.length, 2);
+
+          const firstPendingExtract = pendingExtractResponses.shift();
+          firstPendingExtract(makeResponse({ date: "2026-03-30", merchant_item: "old", amount: "1.00" }));
+          await flush();
+          assert.strictEqual(elements["date-input"].value, "");
+          assert.strictEqual(elements["save-button"].disabled, true);
+
+          extractHandler();
+          const secondPendingExtract = pendingExtractResponses.shift();
+          secondPendingExtract(makeResponse({ date: "2026-03-31", merchant_item: "new", amount: "2.00" }));
+          await flush();
+
+          fileReaderInstances[1].result = "data:second";
+          fileReaderInstances[1].onload();
+          await flush();
+
+          assert.strictEqual(elements["preview-image"].src, "data:second");
+          assert.strictEqual(elements["date-input"].value, "2026-03-31");
+          assert.strictEqual(elements["merchant-input"].value, "new");
+          assert.strictEqual(elements["amount-input"].value, "2.00");
+          assert.strictEqual(elements["save-button"].disabled, false);
+          assert.strictEqual(elements["extract-button"].disabled, false);
+          assert.ok(fetchCalls.some((call) => call.url === "/api/rows"));
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
 def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
     return {
         canonicalize_name(dist.metadata["Name"]): dist

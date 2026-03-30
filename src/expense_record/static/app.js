@@ -14,29 +14,60 @@ const elements = {
 };
 
 let selectedFile = null;
-let selectedLabel = "No screenshot selected yet.";
+let activeSelectionToken = 0;
+let latestExtractRequestToken = 0;
+let extractedSelectionToken = 0;
 
 function setStatus(message, isError = false) {
   elements.statusMessage.textContent = message;
   elements.statusMessage.style.color = isError ? "#9d2d22" : "";
 }
 
+function clearReviewForm() {
+  elements.dateInput.value = "";
+  elements.merchantInput.value = "";
+  elements.amountInput.value = "";
+}
+
+function clearPreview() {
+  elements.previewImage.hidden = true;
+  elements.previewImage.removeAttribute("src");
+}
+
+function resetSelectionState(label) {
+  clearPreview();
+  elements.previewCaption.textContent = label;
+  clearReviewForm();
+  elements.saveButton.disabled = true;
+  extractedSelectionToken = 0;
+}
+
 function setSelectedFile(file, label = file.name) {
   selectedFile = file;
-  selectedLabel = label;
-  elements.previewCaption.textContent = selectedLabel;
+  activeSelectionToken += 1;
+  const selectionToken = activeSelectionToken;
+  latestExtractRequestToken = 0;
+  resetSelectionState(label);
   elements.extractButton.disabled = false;
-  renderPreview(file);
+  renderPreview(file, selectionToken);
   setStatus(`Loaded ${label}. Ready to extract.`);
 }
 
-function renderPreview(file) {
+function renderPreview(file, selectionToken) {
   const reader = new FileReader();
   reader.onload = () => {
+    if (selectionToken !== activeSelectionToken) {
+      return;
+    }
     elements.previewImage.src = String(reader.result);
     elements.previewImage.hidden = false;
   };
-  reader.onerror = () => setStatus("Could not read the selected image.", true);
+  reader.onerror = () => {
+    if (selectionToken !== activeSelectionToken) {
+      return;
+    }
+    setStatus("Could not read the selected image.", true);
+  };
   reader.readAsDataURL(file);
 }
 
@@ -80,6 +111,8 @@ async function extractRow() {
     return;
   }
 
+  const selectionToken = activeSelectionToken;
+  const requestToken = ++latestExtractRequestToken;
   elements.extractButton.disabled = true;
   setStatus("Extracting screenshot text...");
 
@@ -90,6 +123,10 @@ async function extractRow() {
     const response = await fetch("/api/extract", { method: "POST", body: formData });
     const data = await response.json();
 
+    if (selectionToken !== activeSelectionToken || requestToken !== latestExtractRequestToken) {
+      return;
+    }
+
     if (!response.ok) {
       setStatus(data.error || "Extraction failed.", true);
       return;
@@ -98,16 +135,29 @@ async function extractRow() {
     elements.dateInput.value = data.row?.date ?? "";
     elements.merchantInput.value = data.row?.merchant_item ?? "";
     elements.amountInput.value = data.row?.amount ?? "";
+    extractedSelectionToken = selectionToken;
+    elements.saveButton.disabled = false;
     setStatus("Extraction complete. Review the row before saving.");
   } catch (_error) {
+    if (selectionToken !== activeSelectionToken || requestToken !== latestExtractRequestToken) {
+      return;
+    }
     setStatus("Extraction failed.", true);
   } finally {
-    elements.extractButton.disabled = !selectedFile;
+    if (selectionToken === activeSelectionToken && requestToken === latestExtractRequestToken) {
+      elements.extractButton.disabled = false;
+    }
   }
 }
 
 async function saveRow(event) {
   event.preventDefault();
+  if (elements.saveButton.disabled || extractedSelectionToken !== activeSelectionToken) {
+    setStatus("Extract the current screenshot before saving.", true);
+    return;
+  }
+
+  const selectionToken = activeSelectionToken;
   elements.saveButton.disabled = true;
 
   const payload = {
@@ -124,6 +174,10 @@ async function saveRow(event) {
     });
     const data = await response.json();
 
+    if (selectionToken !== activeSelectionToken) {
+      return;
+    }
+
     if (!response.ok) {
       setStatus(data.error || "Save failed.", true);
       return;
@@ -132,9 +186,14 @@ async function saveRow(event) {
     renderRows(Array.isArray(data.rows) ? data.rows : []);
     setStatus("Row saved to Excel.");
   } catch (_error) {
+    if (selectionToken !== activeSelectionToken) {
+      return;
+    }
     setStatus("Save failed.", true);
   } finally {
-    elements.saveButton.disabled = false;
+    if (selectionToken === activeSelectionToken && extractedSelectionToken === activeSelectionToken) {
+      elements.saveButton.disabled = false;
+    }
   }
 }
 
@@ -176,7 +235,7 @@ elements.form.addEventListener("submit", (event) => {
 });
 
 elements.extractButton.disabled = true;
-elements.saveButton.disabled = false;
+elements.saveButton.disabled = true;
 
 void loadRows().catch(() => {
   setStatus("Could not load saved rows.", true);
