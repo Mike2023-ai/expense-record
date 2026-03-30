@@ -46,20 +46,19 @@ def _coerce_save_field(payload: object, field: str) -> str | None:
     if not isinstance(payload, dict):
         return None
 
-    if field not in payload:
-        return ""
+    value = payload.get(field)
+    if value is None or not isinstance(value, str):
+        return None
 
-    value = payload[field]
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value.strip()
-    return None
+    value = value.strip()
+    if not value:
+        return None
+    return value
 
 
 @api.post("/save")
 def save_row():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
     date = _coerce_save_field(payload, "date")
     merchant_item = _coerce_save_field(payload, "merchant_item")
     amount = _coerce_save_field(payload, "amount")

@@ -9,6 +9,8 @@ import textwrap
 import zipfile
 import sysconfig
 
+import pytest
+
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_EXCEL_PATH
 from packaging.requirements import Requirement
@@ -217,6 +219,25 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
     )
 
     assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
+@pytest.mark.parametrize(
+    ("payload", "description"),
+    [
+        ({}, "empty payload"),
+        ({"date": "2026-03-30"}, "omitted fields"),
+        ({"date": None, "merchant_item": None, "amount": None}, "null fields"),
+        ({"date": " ", "merchant_item": "\t", "amount": "\n"}, "whitespace-only fields"),
+    ],
+)
+def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post("/api/save", json=payload)
+
+    assert response.status_code == 400, description
     assert response.get_json() == {"error": "Invalid save payload."}
 
 
