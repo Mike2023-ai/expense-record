@@ -54,7 +54,6 @@ class ExcelExpenseStorage:
             return workbook[self.sheet_name]
 
         worksheet = workbook.create_sheet(self.sheet_name)
-        if worksheet.max_row == 0:
-            worksheet.append(list(self.headers))
-            workbook.save(self.workbook_path)
+        worksheet.append(list(self.headers))
+        workbook.save(self.workbook_path)
         return worksheet

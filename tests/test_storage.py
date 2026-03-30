@@ -66,3 +66,25 @@ def test_excel_storage_uses_named_expenses_sheet_in_multi_sheet_workbook(tmp_pat
         ("2026-03-01", "Existing Shop", "11.00"),
         ("2026-03-02", "New Shop", "12.00"),
     ]
+
+
+def test_excel_storage_creates_missing_expenses_sheet_with_headers(tmp_path):
+    workbook_path = tmp_path / "expenses.xlsx"
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "summary"
+    summary_sheet.append(["ignore", "these", "rows"])
+    workbook.save(workbook_path)
+
+    storage = ExcelExpenseStorage(workbook_path)
+
+    assert storage.list_rows() == []
+
+    storage.append_row(ExpenseRow(date="2026-03-02", merchant_item="New Shop", amount="12.00"))
+
+    reloaded = load_workbook(workbook_path)
+    assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
+    assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
+        ("date", "merchant/item", "amount"),
+        ("2026-03-02", "New Shop", "12.00"),
+    ]
