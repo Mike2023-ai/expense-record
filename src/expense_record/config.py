@@ -19,7 +19,7 @@ def resolve_excel_path() -> Path:
 
 class Config:
     SECRET_KEY = "dev"
-    EXCEL_PATH = DEFAULT_EXCEL_PATH
+    EXCEL_PATH = resolve_excel_path()
 
 
 class TestConfig(Config):

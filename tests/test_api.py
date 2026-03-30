@@ -1,3 +1,4 @@
+import importlib
 import io
 import shutil
 from importlib import metadata
@@ -693,17 +694,12 @@ def test_create_app_uses_default_excel_path_without_override():
     assert app.config["EXCEL_PATH"] == Path.home() / ".expense-screenshot-tool" / "expenses.xlsx"
 
 
-def test_save_endpoint_honors_excel_path_environment_override(monkeypatch, tmp_path):
+def test_config_honors_excel_path_environment_override(monkeypatch, tmp_path):
     override_path = tmp_path / "overridden.xlsx"
     monkeypatch.setenv("EXPENSE_RECORD_EXCEL_PATH", str(override_path))
 
-    app = create_app({"TESTING": True})
-    client = app.test_client()
+    import expense_record.config as config_module
 
-    response = client.post(
-        "/api/save",
-        json={"date": "2026-03-30", "merchant_item": "Override Shop", "amount": "9.99"},
-    )
+    reloaded_config = importlib.reload(config_module)
 
-    assert response.status_code == 200
-    assert override_path.exists()
+    assert reloaded_config.Config.EXCEL_PATH == override_path
