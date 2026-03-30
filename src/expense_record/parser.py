@@ -158,8 +158,8 @@ def _strip_merchant_label(line: str) -> str:
 
 def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
     line = lines[index]
-    if line == "商户" and index + 1 < len(lines) and lines[index + 1] == "名称":
+    if line in {"商户", "商家"} and index + 1 < len(lines) and lines[index + 1] == "名称":
         return True
-    if line == "名称" and index > 0 and lines[index - 1] == "商户":
+    if line == "名称" and index > 0 and lines[index - 1] in {"商户", "商家"}:
         return True
     return False
