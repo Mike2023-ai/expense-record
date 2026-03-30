@@ -26,3 +26,27 @@ def test_parse_expense_row_leaves_missing_fields_blank():
     assert row.date == "2026-03-29"
     assert row.merchant_item == ""
     assert row.amount == ""
+
+
+def test_parse_expense_row_supports_ungrouped_amounts():
+    row = parse_expense_row(
+        [
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥1234.56",
+        ]
+    )
+
+    assert row.amount == "1234.56"
+
+
+def test_parse_expense_row_keeps_digit_bearing_merchant_names():
+    row = parse_expense_row(
+        [
+            "2026-03-29",
+            "7-Eleven",
+            "￥8.50",
+        ]
+    )
+
+    assert row.merchant_item == "7-Eleven"

@@ -38,20 +38,12 @@ class ExcelExpenseStorage:
 
     def _load_or_create_workbook(self):
         if self.workbook_path.exists():
-            workbook = load_workbook(self.workbook_path)
-        else:
-            self.workbook_path.parent.mkdir(parents=True, exist_ok=True)
-            workbook = Workbook()
-            worksheet = workbook.active
-            worksheet.title = "expenses"
-            worksheet.append(list(self.headers))
-            workbook.save(self.workbook_path)
+            return load_workbook(self.workbook_path)
+
+        self.workbook_path.parent.mkdir(parents=True, exist_ok=True)
+        workbook = Workbook()
         worksheet = workbook.active
-        if worksheet.max_row == 0:
-            worksheet.append(list(self.headers))
-            workbook.save(self.workbook_path)
-        elif worksheet.cell(row=1, column=1).value != self.headers[0]:
-            worksheet.delete_rows(1, worksheet.max_row)
-            worksheet.append(list(self.headers))
-            workbook.save(self.workbook_path)
+        worksheet.title = "expenses"
+        worksheet.append(list(self.headers))
+        workbook.save(self.workbook_path)
         return workbook

@@ -11,7 +11,7 @@ DATE_PATTERNS = (
     re.compile(r"(?P<date>\d{4}年\d{1,2}月\d{1,2}日)"),
 )
 TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
-AMOUNT_RE = re.compile(r"(?:￥|¥|CNY\s*)?(?P<amount>-?\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)")
+AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
 PAYMENT_NOISE = (
     "微信支付",
     "支付宝",
@@ -67,9 +67,9 @@ def _extract_amount(lines: list[str]) -> str:
     for line in reversed(lines):
         if _looks_like_date_or_time(line):
             continue
-        match = AMOUNT_RE.search(line.replace(",", ""))
-        if match:
-            return match.group("amount")
+        amount = _match_amount(line)
+        if amount:
+            return amount
     return ""
 
 
@@ -91,7 +91,7 @@ def _looks_like_date_or_time(line: str) -> bool:
 
 
 def _looks_like_amount_line(line: str) -> bool:
-    return bool(AMOUNT_RE.search(line.replace(",", "")))
+    return _match_amount(line) != ""
 
 
 def _contains_payment_noise(line: str) -> bool:
@@ -100,3 +100,12 @@ def _contains_payment_noise(line: str) -> bool:
 
 def _contains_merchandise_signal(line: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in line) or any(char.isalnum() for char in line)
+
+
+def _match_amount(line: str) -> str:
+    cleaned = line.replace(",", "").strip()
+    cleaned = cleaned.removeprefix("￥").removeprefix("¥")
+    cleaned = cleaned.removeprefix("CNY").strip()
+    if AMOUNT_BODY_RE.fullmatch(cleaned):
+        return cleaned
+    return ""
