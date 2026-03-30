@@ -20,6 +20,16 @@ from packaging.utils import canonicalize_name
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_index_page_contains_review_form_container():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'id="expense-form"' in response.data
+
+
 def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
     return {
         canonicalize_name(dist.metadata["Name"]): dist
