@@ -19,5 +19,5 @@ python3 -m venv .venv
 ## Test
 
 ```bash
-.venv/bin/pytest tests/test_api.py::test_index_page_loads -v
+.venv/bin/pytest tests/test_api.py::test_index_page_loads_from_installed_package -v
 ```

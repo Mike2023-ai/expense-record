@@ -38,12 +38,16 @@ def test_index_page_loads_from_installed_package(tmp_path):
         install_dir = Path(r"{install_dir}").resolve()
         assert package_path.is_relative_to(install_dir)
         assert (install_dir / "expense_record" / "templates" / "index.html").exists()
+        assert (install_dir / "expense_record" / "static" / "app.css").exists()
+        assert (install_dir / "expense_record" / "static" / "app.js").exists()
 
         app = create_app({{"TESTING": True}})
         client = app.test_client()
         response = client.get("/")
         assert response.status_code == 200
         assert b"Expense Screenshot Tool" in response.data
+        assert client.get("/static/app.css").status_code == 200
+        assert client.get("/static/app.js").status_code == 200
         """
     ).format(install_dir=install_dir)
 
