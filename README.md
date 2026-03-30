@@ -1,6 +1,18 @@
 # Expense Screenshot Tool
 
+## Quick Start
+
+Run the app with:
+
+```bash
+./run.sh
+```
+
+The script creates `.venv` if needed, installs dependencies when missing, prints the local URL, and starts the Flask app.
+
 ## Setup
+
+If you prefer manual setup:
 
 1. Create a virtual environment.
 2. Install the project in editable mode with the dev extras:
