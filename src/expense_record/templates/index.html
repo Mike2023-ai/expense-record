@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Expense Screenshot Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">Local OCR to Excel</p>
+        <h1>Expense Screenshot Tool</h1>
+        <p class="hero-copy">
+          Paste or upload a phone screenshot, review the extracted row, then save it into Excel.
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>1. Add screenshot</h2>
+          <p>Use the file picker or paste an image directly from the clipboard.</p>
+        </div>
+
+        <div id="paste-zone" class="paste-zone" tabindex="0" aria-label="Paste screenshot zone">
+          <span>Drop focus here and press Ctrl+V to paste a screenshot</span>
+        </div>
+
+        <div class="upload-row">
+          <label class="file-picker">
+            <span>Upload image</span>
+            <input id="file-input" type="file" accept="image/*">
+          </label>
+          <button id="extract-button" type="button">Extract</button>
+        </div>
+
+        <figure class="preview-card">
+          <img id="preview-image" class="preview-image" alt="Selected screenshot preview" hidden>
+          <figcaption id="preview-caption" class="preview-caption">No screenshot selected yet.</figcaption>
+        </figure>
+
+        <p id="status-message" class="status-message" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>2. Review row</h2>
+          <p>Adjust the extracted values before saving.</p>
+        </div>
+
+        <form id="expense-form" class="expense-form">
+          <label>
+            <span>Date</span>
+            <input id="date-input" name="date" type="text" placeholder="YYYY-MM-DD" autocomplete="off">
+          </label>
+          <label>
+            <span>Merchant / Item</span>
+            <input id="merchant-input" name="merchant_item" type="text" placeholder="Merchant or description" autocomplete="off">
+          </label>
+          <label>
+            <span>Amount</span>
+            <input id="amount-input" name="amount" type="text" placeholder="0.00" autocomplete="off">
+          </label>
+          <div class="form-actions">
+            <button id="save-button" type="submit" disabled>Save to Excel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Saved records</h2>
+          <p>Rows already persisted in the Excel file.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table id="records-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Merchant / Item</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody id="records-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

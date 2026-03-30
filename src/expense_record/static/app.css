@@ -1,0 +1,276 @@
+:root {
+  --bg: #f5efe5;
+  --bg-accent: rgba(162, 92, 34, 0.16);
+  --panel: rgba(255, 252, 247, 0.9);
+  --ink: #201a16;
+  --muted: #6e5f52;
+  --accent: #a04f17;
+  --accent-strong: #7f3d12;
+  --line: #dccbbb;
+  --shadow: 0 18px 48px rgba(51, 36, 21, 0.12);
+  --radius: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: "Trebuchet MS", "Segoe UI", Arial, sans-serif;
+  background:
+    radial-gradient(circle at top, var(--bg-accent), transparent 34%),
+    linear-gradient(180deg, #faf5ec 0%, var(--bg) 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.28) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.15), transparent 70%);
+}
+
+.app-shell {
+  width: min(1080px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero {
+  max-width: 760px;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 5vw, 4.2rem);
+  line-height: 0.95;
+}
+
+.hero-copy {
+  max-width: 56ch;
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid rgba(220, 203, 187, 0.8);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px;
+  margin-bottom: 18px;
+  backdrop-filter: blur(10px);
+}
+
+.panel-header {
+  margin-bottom: 16px;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.panel-header p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.paste-zone {
+  min-height: 120px;
+  border: 2px dashed var(--line);
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.6);
+  transition: border-color 140ms ease, transform 140ms ease, background-color 140ms ease;
+}
+
+.paste-zone:focus,
+.paste-zone:focus-visible {
+  outline: 3px solid rgba(160, 79, 23, 0.2);
+  outline-offset: 2px;
+  border-color: var(--accent);
+  background: rgba(255, 248, 240, 0.95);
+}
+
+.upload-row,
+.form-actions {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.upload-row {
+  margin-top: 14px;
+}
+
+.file-picker {
+  flex: 1 1 320px;
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+input[type="file"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+}
+
+#extract-button,
+#save-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(127, 61, 18, 0.22);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+#extract-button:hover,
+#save-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(127, 61, 18, 0.28);
+}
+
+#extract-button:disabled,
+#save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.preview-card {
+  margin: 18px 0 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(220, 203, 187, 0.8);
+}
+
+.preview-image {
+  display: block;
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.preview-caption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.status-message {
+  min-height: 1.4em;
+  margin: 14px 0 0;
+  color: var(--muted);
+}
+
+.expense-form {
+  display: grid;
+  gap: 14px;
+}
+
+.expense-form label {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.expense-form input[type="text"] {
+  width: 100%;
+  padding: 13px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+}
+
+.expense-form input[type="text"]:focus {
+  outline: 3px solid rgba(160, 79, 23, 0.16);
+  border-color: var(--accent);
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+#records-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#records-table th,
+#records-table td {
+  padding: 12px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(220, 203, 187, 0.8);
+}
+
+#records-table th {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+#records-table tbody tr:hover {
+  background: rgba(160, 79, 23, 0.04);
+}
+
+@media (max-width: 720px) {
+  .app-shell {
+    width: min(100% - 20px, 1080px);
+    padding-top: 18px;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .upload-row,
+  .form-actions {
+    align-items: stretch;
+  }
+
+  #extract-button,
+  #save-button {
+    width: 100%;
+  }
+}

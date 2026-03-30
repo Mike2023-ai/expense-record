@@ -1,0 +1,2 @@
+"""Expense Screenshot Tool package."""
+

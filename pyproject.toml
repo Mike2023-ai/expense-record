@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "expense-screenshot-tool"
+version = "0.1.0"
+description = "A Flask app for recording expenses from screenshots."
+requires-python = ">=3.12"
+dependencies = [
+  "Flask>=3.0",
+  "openpyxl>=3.1",
+  "rapidocr-onnxruntime>=1.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "packaging>=24.0",
+  "pytest>=8.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+expense_record = ["templates/*.html", "templates/**/*.html", "static/*", "static/**/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
