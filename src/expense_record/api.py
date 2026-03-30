@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
-from expense_record.config import DEFAULT_EXCEL_PATH
+from expense_record.config import resolve_excel_path
 from expense_record.models import ExpenseRow
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import parse_expense_row
@@ -16,7 +16,7 @@ api = Blueprint("api", __name__, url_prefix="/api")
 def _storage() -> ExcelExpenseStorage:
     from expense_record.storage import ExcelExpenseStorage
 
-    excel_path = Path(current_app.config.get("EXCEL_PATH", DEFAULT_EXCEL_PATH))
+    excel_path = Path(current_app.config.get("EXCEL_PATH", resolve_excel_path()))
     return ExcelExpenseStorage(excel_path)
 
 
@@ -39,7 +39,17 @@ def extract_row():
         current_app.logger.exception("OCR extraction failed")
         return jsonify({"error": "OCR extraction failed."}), 500
 
-    return jsonify({"row": row.to_dict(), "lines": lines})
+    row_data = row.to_dict()
+    warning = ""
+    if not any(row_data.values()):
+        warning = "OCR returned no usable fields."
+    elif not all(row_data.values()):
+        warning = "OCR returned incomplete fields."
+
+    payload = {"row": row_data, "lines": lines}
+    if warning:
+        payload["warning"] = warning
+    return jsonify(payload)
 
 
 def _coerce_save_field(payload: object, field: str) -> str | None:
@@ -50,10 +60,7 @@ def _coerce_save_field(payload: object, field: str) -> str | None:
     if value is None or not isinstance(value, str):
         return None
 
-    value = value.strip()
-    if not value:
-        return None
-    return value
+    return value.strip()
 
 
 @api.post("/save")

@@ -225,6 +225,25 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           assert.strictEqual(elements["save-button"].disabled, false);
           assert.strictEqual(elements["extract-button"].disabled, false);
           assert.ok(fetchCalls.some((call) => call.url === "/api/rows"));
+
+          selectScreenshot("third.png");
+          extractHandler();
+          const thirdPendingExtract = pendingExtractResponses.shift();
+          thirdPendingExtract(
+            {
+              ok: true,
+              json: async () => ({
+                row: { date: "", merchant_item: "", amount: "" },
+                lines: ["OCR returned no usable fields."],
+                warning: "OCR returned no usable fields.",
+              }),
+            }
+          );
+          await flush();
+
+          assert.strictEqual(elements["status-message"].textContent, "OCR returned no usable fields.");
+          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+          assert.strictEqual(elements["save-button"].disabled, false);
         }
 
         main().catch((error) => {
@@ -392,6 +411,29 @@ def test_extract_endpoint_rejects_missing_image(tmp_path):
     assert response.get_json() == {"error": "No image provided."}
 
 
+def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: ["微信支付", "订单已完成"],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "row": {"date": "", "merchant_item": "", "amount": ""},
+        "lines": ["微信支付", "订单已完成"],
+        "warning": "OCR returned no usable fields.",
+    }
+
+
 def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -426,6 +468,21 @@ def test_save_endpoint_persists_row(tmp_path):
     ]
 
 
+def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={"date": "", "merchant_item": "手动补录", "amount": ""},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "", "merchant_item": "手动补录", "amount": ""}
+    ]
+
+
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -445,7 +502,6 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
         ({}, "empty payload"),
         ({"date": "2026-03-30"}, "omitted fields"),
         ({"date": None, "merchant_item": None, "amount": None}, "null fields"),
-        ({"date": " ", "merchant_item": "\t", "amount": "\n"}, "whitespace-only fields"),
     ],
 )
 def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
@@ -480,3 +536,12 @@ def test_create_app_uses_default_excel_path_without_override():
 
     assert app.config["EXCEL_PATH"] == DEFAULT_EXCEL_PATH
     assert app.config["EXCEL_PATH"] == Path.home() / ".expense-screenshot-tool" / "expenses.xlsx"
+
+
+def test_create_app_honors_excel_path_environment_override(monkeypatch, tmp_path):
+    override_path = tmp_path / "overridden.xlsx"
+    monkeypatch.setenv("EXPENSE_RECORD_EXCEL_PATH", str(override_path))
+
+    app = create_app({"TESTING": True})
+
+    assert app.config["EXCEL_PATH"] == override_path

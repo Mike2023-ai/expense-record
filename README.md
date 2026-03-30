@@ -16,6 +16,14 @@ python3 -m venv .venv
 .venv/bin/flask --app expense_record.app run
 ```
 
+## Excel Path
+
+Saved rows go to `~/.expense-screenshot-tool/expenses.xlsx` by default. Override the workbook path with:
+
+```bash
+export EXPENSE_RECORD_EXCEL_PATH=/absolute/path/to/expenses.xlsx
+```
+
 ## Test
 
 ```bash

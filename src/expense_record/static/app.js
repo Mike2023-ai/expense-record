@@ -137,7 +137,7 @@ async function extractRow() {
     elements.amountInput.value = data.row?.amount ?? "";
     extractedSelectionToken = selectionToken;
     elements.saveButton.disabled = false;
-    setStatus("Extraction complete. Review the row before saving.");
+    setStatus(data.warning || "Extraction complete. Review the row before saving.", Boolean(data.warning));
   } catch (_error) {
     if (selectionToken !== activeSelectionToken || requestToken !== latestExtractRequestToken) {
       return;
