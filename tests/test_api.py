@@ -256,6 +256,160 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
     subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
 
 
+def test_frontend_shows_api_error_messages_for_extract_and_save():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            textContent: "",
+            innerHTML: "",
+            src: "",
+            style: {},
+            listeners: {},
+            children: [],
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "expense-form": makeElement("expense-form"),
+          "date-input": makeElement("date-input"),
+          "merchant-input": makeElement("merchant-input"),
+          "amount-input": makeElement("amount-input"),
+          "records-body": makeElement("records-body"),
+        };
+        elements["preview-image"].hidden = true;
+
+        const pendingExtractResponses = [];
+        const pendingSaveResponses = [];
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {
+            readAsDataURL() {}
+          },
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url) => {
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/extract") {
+              return await new Promise((resolve) => pendingExtractResponses.push(resolve));
+            }
+            if (url === "/api/save") {
+              return await new Promise((resolve) => pendingSaveResponses.push(resolve));
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              return {
+                tagName: String(tag).toUpperCase(),
+                textContent: "",
+                colSpan: 0,
+                children: [],
+                appendChild(child) {
+                  this.children.push(child);
+                },
+              };
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+            async function main() {
+              elements["file-input"].listeners.change({
+                target: { files: [{ name: "receipt.png", type: "image/png" }] },
+              });
+
+              elements["extract-button"].listeners.click();
+              pendingExtractResponses.shift()({
+                ok: false,
+                json: async () => ({ error: "Extraction failed from API." }),
+              });
+              await flush();
+              assert.strictEqual(elements["status-message"].textContent, "Extraction failed from API.");
+              assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+              assert.strictEqual(elements["extract-button"].disabled, false);
+
+              elements["extract-button"].listeners.click();
+              pendingExtractResponses.shift()({
+                ok: true,
+                json: async () => ({
+                  row: { date: "2026-03-30", merchant_item: "Shop", amount: "12.00" },
+                  lines: ["2026-03-30", "Shop", "12.00"],
+                }),
+              });
+              await flush();
+
+              elements["date-input"].value = "2026-03-30";
+              elements["merchant-input"].value = "Shop";
+              elements["amount-input"].value = "12.00";
+
+              elements["expense-form"].listeners.submit({ preventDefault() {} });
+              pendingSaveResponses.shift()({
+                ok: false,
+                json: async () => ({ error: "Save failed from API." }),
+          });
+          await flush();
+          assert.strictEqual(elements["status-message"].textContent, "Save failed from API.");
+          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
 def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
     return {
         canonicalize_name(dist.metadata["Name"]): dist
@@ -502,6 +656,7 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
         ({}, "empty payload"),
         ({"date": "2026-03-30"}, "omitted fields"),
         ({"date": None, "merchant_item": None, "amount": None}, "null fields"),
+        ({"date": " ", "merchant_item": "\t", "amount": "\n"}, "whitespace-only fields"),
     ],
 )
 def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
@@ -538,10 +693,17 @@ def test_create_app_uses_default_excel_path_without_override():
     assert app.config["EXCEL_PATH"] == Path.home() / ".expense-screenshot-tool" / "expenses.xlsx"
 
 
-def test_create_app_honors_excel_path_environment_override(monkeypatch, tmp_path):
+def test_save_endpoint_honors_excel_path_environment_override(monkeypatch, tmp_path):
     override_path = tmp_path / "overridden.xlsx"
     monkeypatch.setenv("EXPENSE_RECORD_EXCEL_PATH", str(override_path))
 
     app = create_app({"TESTING": True})
+    client = app.test_client()
 
-    assert app.config["EXCEL_PATH"] == override_path
+    response = client.post(
+        "/api/save",
+        json={"date": "2026-03-30", "merchant_item": "Override Shop", "amount": "9.99"},
+    )
+
+    assert response.status_code == 200
+    assert override_path.exists()

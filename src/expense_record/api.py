@@ -4,7 +4,7 @@ from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
-from expense_record.config import resolve_excel_path
+from expense_record.config import DEFAULT_EXCEL_PATH, resolve_excel_path
 from expense_record.models import ExpenseRow
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import parse_expense_row
@@ -16,7 +16,14 @@ api = Blueprint("api", __name__, url_prefix="/api")
 def _storage() -> ExcelExpenseStorage:
     from expense_record.storage import ExcelExpenseStorage
 
-    excel_path = Path(current_app.config.get("EXCEL_PATH", resolve_excel_path()))
+    configured_path = current_app.config.get("EXCEL_PATH")
+    env_path = resolve_excel_path()
+    if configured_path is None:
+        excel_path = env_path
+    else:
+        excel_path = Path(configured_path)
+        if excel_path == DEFAULT_EXCEL_PATH and env_path != DEFAULT_EXCEL_PATH:
+            excel_path = env_path
     return ExcelExpenseStorage(excel_path)
 
 
@@ -60,7 +67,13 @@ def _coerce_save_field(payload: object, field: str) -> str | None:
     if value is None or not isinstance(value, str):
         return None
 
-    return value.strip()
+    if value == "":
+        return ""
+
+    value = value.strip()
+    if not value:
+        return None
+    return value
 
 
 @api.post("/save")
