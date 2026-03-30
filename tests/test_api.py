@@ -463,7 +463,7 @@ def test_index_page_loads_from_installed_package(tmp_path):
             "--no-deps",
             "-w",
             str(wheelhouse),
-            str(PROJECT_ROOT),
+            ".",
         ],
         check=True,
         cwd=PROJECT_ROOT,
