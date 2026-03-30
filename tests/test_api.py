@@ -1,14 +1,57 @@
+import shutil
+from importlib import metadata
 from pathlib import Path
 import os
 import subprocess
 import sys
 import textwrap
 import zipfile
-import shutil
 import sysconfig
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
+    return {
+        canonicalize_name(dist.metadata["Name"]): dist
+        for dist in metadata.distributions(path=[str(site_packages)])
+        if dist.metadata.get("Name")
+    }
+
+
+def _dependency_closure(root_names: list[str], site_packages: Path) -> list[metadata.Distribution]:
+    distributions = _distribution_index(site_packages)
+    required: dict[str, metadata.Distribution] = {}
+    pending = [canonicalize_name(name) for name in root_names]
+
+    while pending:
+        name = pending.pop()
+        if name in required:
+            continue
+        dist = distributions[name]
+        required[name] = dist
+        for requirement_text in dist.requires or []:
+            requirement = Requirement(requirement_text)
+            if requirement.marker and not requirement.marker.evaluate():
+                continue
+            pending.append(canonicalize_name(requirement.name))
+
+    return list(required.values())
+
+
+def _copy_distribution(dist: metadata.Distribution, destination: Path) -> None:
+    for file in dist.files or []:
+        source = dist.locate_file(file)
+        target = destination / file
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, target)
 
 
 def test_index_page_loads_from_installed_package(tmp_path):
@@ -36,6 +79,7 @@ def test_index_page_loads_from_installed_package(tmp_path):
     with zipfile.ZipFile(wheel_path) as wheel_file:
         metadata_name = next(name for name in wheel_file.namelist() if name.endswith(".dist-info/METADATA"))
         metadata = wheel_file.read(metadata_name).decode()
+        assert any(name.endswith("static/nested/fixture.txt") for name in wheel_file.namelist())
 
     assert "Requires-Dist: Flask>=3.0" in metadata
     assert "Requires-Dist: openpyxl>=3.1" in metadata
@@ -60,18 +104,8 @@ def test_index_page_loads_from_installed_package(tmp_path):
     )
     current_site_packages = Path(sysconfig.get_paths()["purelib"])
 
-    for package_name in [
-        "flask",
-        "blinker",
-        "click",
-        "itsdangerous",
-        "jinja2",
-        "markupsafe",
-        "werkzeug",
-    ]:
-        shutil.copytree(current_site_packages / package_name, venv_site_packages / package_name)
-        for dist_info in current_site_packages.glob(f"{package_name}*.dist-info"):
-            shutil.copytree(dist_info, venv_site_packages / dist_info.name)
+    for distribution in _dependency_closure(["Flask"], current_site_packages):
+        _copy_distribution(distribution, venv_site_packages)
 
     subprocess.run([str(venv_python), "-m", "pip", "install", "--no-deps", str(wheel_path)], check=True, cwd=PROJECT_ROOT)
 
@@ -89,6 +123,7 @@ def test_index_page_loads_from_installed_package(tmp_path):
         assert (install_dir / "expense_record" / "templates" / "index.html").exists()
         assert (install_dir / "expense_record" / "static" / "app.css").exists()
         assert (install_dir / "expense_record" / "static" / "app.js").exists()
+        assert (install_dir / "expense_record" / "static" / "nested" / "fixture.txt").exists()
 
         app = create_app({"TESTING": True})
         client = app.test_client()

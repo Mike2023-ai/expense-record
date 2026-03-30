@@ -26,7 +26,7 @@ include-package-data = true
 where = ["src"]
 
 [tool.setuptools.package-data]
-expense_record = ["templates/*.html", "static/*"]
+expense_record = ["templates/*.html", "templates/**/*.html", "static/*", "static/**/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
