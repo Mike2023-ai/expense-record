@@ -4,6 +4,8 @@ import subprocess
 import sys
 import textwrap
 import zipfile
+import shutil
+import sysconfig
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,10 +31,11 @@ def test_index_page_loads_from_installed_package(tmp_path):
         cwd=PROJECT_ROOT,
     )
 
-    wheel_path = next(wheelhouse.glob("expense_screenshot_tool-0.1.0-py3-none-any.whl"))
+    wheel_path = next(wheelhouse.glob("*.whl"))
 
     with zipfile.ZipFile(wheel_path) as wheel_file:
-        metadata = wheel_file.read("expense_screenshot_tool-0.1.0.dist-info/METADATA").decode()
+        metadata_name = next(name for name in wheel_file.namelist() if name.endswith(".dist-info/METADATA"))
+        metadata = wheel_file.read(metadata_name).decode()
 
     assert "Requires-Dist: Flask>=3.0" in metadata
     assert "Requires-Dist: openpyxl>=3.1" in metadata
@@ -45,7 +48,31 @@ def test_index_page_loads_from_installed_package(tmp_path):
         "python.exe" if os.name == "nt" else "python"
     )
 
-    subprocess.run([str(venv_python), "-m", "pip", "install", "--default-timeout", "120", "Flask"], check=True)
+    venv_site_packages = Path(
+        subprocess.check_output(
+            [
+                str(venv_python),
+                "-c",
+                "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+            ],
+            text=True,
+        ).strip()
+    )
+    current_site_packages = Path(sysconfig.get_paths()["purelib"])
+
+    for package_name in [
+        "flask",
+        "blinker",
+        "click",
+        "itsdangerous",
+        "jinja2",
+        "markupsafe",
+        "werkzeug",
+    ]:
+        shutil.copytree(current_site_packages / package_name, venv_site_packages / package_name)
+        for dist_info in current_site_packages.glob(f"{package_name}*.dist-info"):
+            shutil.copytree(dist_info, venv_site_packages / dist_info.name)
+
     subprocess.run([str(venv_python), "-m", "pip", "install", "--no-deps", str(wheel_path)], check=True, cwd=PROJECT_ROOT)
 
     script = textwrap.dedent(
