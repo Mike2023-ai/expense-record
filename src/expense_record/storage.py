@@ -9,19 +9,20 @@ from expense_record.models import ExpenseRow
 
 class ExcelExpenseStorage:
     headers = ("date", "merchant/item", "amount")
+    sheet_name = "expenses"
 
     def __init__(self, workbook_path: str | Path):
         self.workbook_path = Path(workbook_path)
 
     def append_row(self, row: ExpenseRow) -> None:
         workbook = self._load_or_create_workbook()
-        worksheet = workbook.active
+        worksheet = self._get_expenses_sheet(workbook)
         worksheet.append([row.date, row.merchant_item, row.amount])
         workbook.save(self.workbook_path)
 
     def list_rows(self) -> list[ExpenseRow]:
         workbook = self._load_or_create_workbook()
-        worksheet = workbook.active
+        worksheet = self._get_expenses_sheet(workbook)
         rows: list[ExpenseRow] = []
         for values in worksheet.iter_rows(min_row=2, values_only=True):
             if not any(values):
@@ -43,7 +44,17 @@ class ExcelExpenseStorage:
         self.workbook_path.parent.mkdir(parents=True, exist_ok=True)
         workbook = Workbook()
         worksheet = workbook.active
-        worksheet.title = "expenses"
+        worksheet.title = self.sheet_name
         worksheet.append(list(self.headers))
         workbook.save(self.workbook_path)
         return workbook
+
+    def _get_expenses_sheet(self, workbook):
+        if self.sheet_name in workbook.sheetnames:
+            return workbook[self.sheet_name]
+
+        worksheet = workbook.create_sheet(self.sheet_name)
+        if worksheet.max_row == 0:
+            worksheet.append(list(self.headers))
+            workbook.save(self.workbook_path)
+        return worksheet

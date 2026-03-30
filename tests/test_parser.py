@@ -50,3 +50,26 @@ def test_parse_expense_row_keeps_digit_bearing_merchant_names():
     )
 
     assert row.merchant_item == "7-Eleven"
+
+
+def test_parse_expense_row_supports_labeled_amount_lines():
+    row = parse_expense_row(
+        [
+            "2026-03-29",
+            "付款 ¥32.00",
+        ]
+    )
+
+    assert row.amount == "32.00"
+
+
+def test_parse_expense_row_supports_amount_suffixes_and_labels():
+    row = parse_expense_row(
+        [
+            "2026-03-29",
+            "金额 32.00",
+            "-32.00元",
+        ]
+    )
+
+    assert row.amount == "32.00"

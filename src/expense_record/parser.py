@@ -12,6 +12,10 @@ DATE_PATTERNS = (
 )
 TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
+LABELLED_AMOUNT_RE = re.compile(
+    r"^(?:金额|付款|支付|实付|消费|支出|合计|总计)\s*[:：]?\s*(?:￥|¥|CNY\s*)?(?P<amount>-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)"
+    r"(?:元)?$"
+)
 PAYMENT_NOISE = (
     "微信支付",
     "支付宝",
@@ -106,6 +110,12 @@ def _match_amount(line: str) -> str:
     cleaned = line.replace(",", "").strip()
     cleaned = cleaned.removeprefix("￥").removeprefix("¥")
     cleaned = cleaned.removeprefix("CNY").strip()
+    if match := LABELLED_AMOUNT_RE.fullmatch(cleaned):
+        return match.group("amount").removeprefix("-")
     if AMOUNT_BODY_RE.fullmatch(cleaned):
-        return cleaned
+        return cleaned.removeprefix("-")
+    if cleaned.endswith("元"):
+        amount = cleaned.removesuffix("元").strip()
+        if AMOUNT_BODY_RE.fullmatch(amount):
+            return amount.removeprefix("-")
     return ""

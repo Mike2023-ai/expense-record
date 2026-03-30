@@ -38,3 +38,31 @@ def test_excel_storage_preserves_preexisting_rows_with_custom_header(tmp_path):
         ("2026-03-01", "Existing Shop", "11.00"),
         ("2026-03-02", "New Shop", "12.00"),
     ]
+
+
+def test_excel_storage_uses_named_expenses_sheet_in_multi_sheet_workbook(tmp_path):
+    workbook_path = tmp_path / "expenses.xlsx"
+    workbook = Workbook()
+    default_sheet = workbook.active
+    default_sheet.title = "summary"
+    default_sheet.append(["ignore", "these", "rows"])
+
+    expenses_sheet = workbook.create_sheet("expenses")
+    expenses_sheet.append(["date", "merchant/item", "amount"])
+    expenses_sheet.append(["2026-03-01", "Existing Shop", "11.00"])
+    workbook.active = 0
+    workbook.save(workbook_path)
+
+    storage = ExcelExpenseStorage(workbook_path)
+
+    assert storage.list_rows() == [ExpenseRow(date="2026-03-01", merchant_item="Existing Shop", amount="11.00")]
+
+    storage.append_row(ExpenseRow(date="2026-03-02", merchant_item="New Shop", amount="12.00"))
+
+    reloaded = load_workbook(workbook_path)
+    assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
+    assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
+        ("date", "merchant/item", "amount"),
+        ("2026-03-01", "Existing Shop", "11.00"),
+        ("2026-03-02", "New Shop", "12.00"),
+    ]
