@@ -78,6 +78,8 @@ def save_row():
 
     if date is None or merchant_item is None or amount is None:
         return jsonify({"error": "Invalid save payload."}), 400
+    if not any((date, merchant_item, amount)):
+        return jsonify({"error": "At least one field is required."}), 400
 
     row = ExpenseRow(date=date, merchant_item=merchant_item, amount=amount)
     storage = _storage()

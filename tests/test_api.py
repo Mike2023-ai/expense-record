@@ -1,4 +1,3 @@
-import importlib
 import io
 import shutil
 from importlib import metadata
@@ -589,6 +588,32 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
     }
 
 
+def test_save_endpoint_rejects_completely_blank_rows_after_empty_ocr_warning(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: ["微信支付", "订单已完成"],
+    )
+
+    extract_response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
+        content_type="multipart/form-data",
+    )
+    assert extract_response.status_code == 200
+    assert extract_response.get_json()["warning"] == "OCR returned no usable fields."
+
+    save_response = client.post(
+        "/api/save",
+        json={"date": "", "merchant_item": "", "amount": ""},
+    )
+
+    assert save_response.status_code == 400
+    assert save_response.get_json() == {"error": "At least one field is required."}
+
+
 def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -694,12 +719,22 @@ def test_create_app_uses_default_excel_path_without_override():
     assert app.config["EXCEL_PATH"] == Path.home() / ".expense-screenshot-tool" / "expenses.xlsx"
 
 
-def test_config_honors_excel_path_environment_override(monkeypatch, tmp_path):
+def test_create_app_honors_excel_path_environment_override(monkeypatch, tmp_path):
     override_path = tmp_path / "overridden.xlsx"
     monkeypatch.setenv("EXPENSE_RECORD_EXCEL_PATH", str(override_path))
 
-    import expense_record.config as config_module
+    script = textwrap.dedent(
+        """
+        import os
+        from expense_record.app import create_app
 
-    reloaded_config = importlib.reload(config_module)
+        app = create_app({"TESTING": True})
+        assert str(app.config["EXCEL_PATH"]) == os.environ["EXPECTED_EXCEL_PATH"]
+        """
+    )
 
-    assert reloaded_config.Config.EXCEL_PATH == override_path
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+    env["EXPECTED_EXCEL_PATH"] = str(override_path)
+
+    subprocess.run([sys.executable, "-c", script], check=True, cwd=PROJECT_ROOT, env=env)
