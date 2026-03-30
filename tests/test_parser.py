@@ -85,3 +85,18 @@ def test_parse_expense_row_extracts_labeled_merchant_name():
     )
 
     assert row.merchant_item == "瑞幸咖啡"
+
+
+def test_parse_expense_row_skips_metadata_before_merchant():
+    row = parse_expense_row(
+        [
+            "2026-03-29 18:21",
+            "交易单号 123456",
+            "尾号1234",
+            "付款方式 储蓄卡",
+            "商户名称 瑞幸咖啡",
+            "付款 ¥32.00",
+        ]
+    )
+
+    assert row.merchant_item == "瑞幸咖啡"

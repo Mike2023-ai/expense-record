@@ -38,6 +38,16 @@ MERCHANT_LABELS = (
     "门店名称",
     "交易对象",
 )
+MERCHANT_METADATA_PREFIXES = (
+    "交易单号",
+    "尾号",
+    "付款方式",
+    "支付方式",
+    "卡号",
+    "银行卡号",
+    "流水号",
+    "订单号",
+)
 
 
 def parse_expense_row(text_lines: str | Iterable[str]) -> ExpenseRow:
@@ -93,6 +103,8 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
             continue
         if _contains_payment_noise(line):
             continue
+        if _contains_merchant_metadata(line):
+            continue
         if _contains_merchandise_signal(line):
             return _strip_merchant_label(line)
     return ""
@@ -108,6 +120,10 @@ def _looks_like_amount_line(line: str) -> bool:
 
 def _contains_payment_noise(line: str) -> bool:
     return any(token in line for token in PAYMENT_NOISE)
+
+
+def _contains_merchant_metadata(line: str) -> bool:
+    return any(line.startswith(prefix) for prefix in MERCHANT_METADATA_PREFIXES)
 
 
 def _contains_merchandise_signal(line: str) -> bool:
