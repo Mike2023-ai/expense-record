@@ -5,7 +5,6 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 VENV_DIR="$ROOT_DIR/.venv"
 PYTHON_BIN="$VENV_DIR/bin/python"
-FLASK_BIN="$VENV_DIR/bin/flask"
 APP_URL="http://127.0.0.1:5000"
 
 cd "$ROOT_DIR"
@@ -46,4 +45,4 @@ if ! check_imports "$PYTHON_BIN" >/dev/null 2>&1; then
 fi
 
 echo "Starting Expense Screenshot Tool at $APP_URL"
-exec "$FLASK_BIN" --app expense_record.app run
+exec "$PYTHON_BIN" -m flask --app expense_record.app run
