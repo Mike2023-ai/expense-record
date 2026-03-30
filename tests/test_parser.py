@@ -100,3 +100,16 @@ def test_parse_expense_row_skips_metadata_before_merchant():
     )
 
     assert row.merchant_item == "瑞幸咖啡"
+
+
+def test_parse_expense_row_handles_split_merchant_label_and_value():
+    row = parse_expense_row(
+        [
+            "2026-03-29 18:21",
+            "商户名称",
+            "瑞幸咖啡",
+            "付款 ¥32.00",
+        ]
+    )
+
+    assert row.merchant_item == "瑞幸咖啡"

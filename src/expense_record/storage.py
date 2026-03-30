@@ -51,9 +51,20 @@ class ExcelExpenseStorage:
 
     def _get_expenses_sheet(self, workbook):
         if self.sheet_name in workbook.sheetnames:
-            return workbook[self.sheet_name]
+            worksheet = workbook[self.sheet_name]
+            if self._sheet_needs_headers(worksheet):
+                self._write_headers(worksheet)
+                workbook.save(self.workbook_path)
+            return worksheet
 
         worksheet = workbook.create_sheet(self.sheet_name)
-        worksheet.append(list(self.headers))
+        self._write_headers(worksheet)
         workbook.save(self.workbook_path)
         return worksheet
+
+    def _sheet_needs_headers(self, worksheet) -> bool:
+        return worksheet.max_row == 1 and worksheet.max_column == 1 and worksheet["A1"].value is None
+
+    def _write_headers(self, worksheet) -> None:
+        for column, header in enumerate(self.headers, start=1):
+            worksheet.cell(row=1, column=column, value=header)

@@ -88,3 +88,26 @@ def test_excel_storage_creates_missing_expenses_sheet_with_headers(tmp_path):
         ("date", "merchant/item", "amount"),
         ("2026-03-02", "New Shop", "12.00"),
     ]
+
+
+def test_excel_storage_initializes_blank_existing_expenses_sheet(tmp_path):
+    workbook_path = tmp_path / "expenses.xlsx"
+    workbook = Workbook()
+    summary_sheet = workbook.active
+    summary_sheet.title = "summary"
+    summary_sheet.append(["ignore", "these", "rows"])
+    workbook.create_sheet("expenses")
+    workbook.save(workbook_path)
+
+    storage = ExcelExpenseStorage(workbook_path)
+
+    assert storage.list_rows() == []
+
+    storage.append_row(ExpenseRow(date="2026-03-03", merchant_item="Blank Sheet Shop", amount="13.00"))
+
+    reloaded = load_workbook(workbook_path)
+    assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
+    assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
+        ("date", "merchant/item", "amount"),
+        ("2026-03-03", "Blank Sheet Shop", "13.00"),
+    ]

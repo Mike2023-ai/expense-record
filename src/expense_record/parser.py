@@ -106,7 +106,9 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
         if _contains_merchant_metadata(line):
             continue
         if _contains_merchandise_signal(line):
-            return _strip_merchant_label(line)
+            merchant_item = _strip_merchant_label(line)
+            if merchant_item:
+                return merchant_item
     return ""
 
 
