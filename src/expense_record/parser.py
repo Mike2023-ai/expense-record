@@ -14,6 +14,7 @@ DATE_PATTERNS = (
 MONTH_DAY_WITH_CHINESE_RE = re.compile(
     r"(?:^|[\s(（\[\{【<,，:：;；])"
     r"(?P<date>(?:0?[1-9]|1[0-2])月(?:0?[1-9]|[12]\d|3[01])日)"
+    r"(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?"
     r"(?=$|[\s)）\]\}】>,，。.!！？?])"
 )
 MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
@@ -123,7 +124,7 @@ def _canonicalize_month_day(month: int, day: int) -> str:
         date(year, month, day)
     except ValueError:
         return ""
-    return f"{year:04d}-{month:02d}-{day:02d}"
+    return f"{month:02d}-{day:02d}"
 
 
 def _extract_amount(lines: list[str]) -> str:

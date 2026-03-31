@@ -162,7 +162,19 @@ def test_parse_expense_row_supports_month_day_date_with_time():
         ]
     )
 
-    assert row.date == f"{date.today().year}-03-29"
+    assert row.date == "03-29"
+
+
+def test_parse_expense_row_supports_month_day_date_with_attached_time():
+    row = parse_expense_row(
+        [
+            "3月29日08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == "03-29"
 
 
 def test_parse_expense_row_supports_month_day_date_without_time():
@@ -174,7 +186,7 @@ def test_parse_expense_row_supports_month_day_date_without_time():
         ]
     )
 
-    assert row.date == f"{date.today().year}-03-29"
+    assert row.date == "03-29"
 
 
 def test_parse_expense_row_supports_slash_month_day_date_with_time():
@@ -186,7 +198,7 @@ def test_parse_expense_row_supports_slash_month_day_date_with_time():
         ]
     )
 
-    assert row.date == f"{date.today().year}-03-29"
+    assert row.date == "03-29"
 
 
 def test_parse_expense_row_supports_realistic_month_day_row():
@@ -199,7 +211,7 @@ def test_parse_expense_row_supports_realistic_month_day_row():
     )
 
     assert row == ExpenseRow(
-        date=f"{date.today().year}-03-29",
+        date="03-29",
         merchant_item="扫二维码付款-给早餐",
         amount="5.00",
     )
@@ -214,7 +226,7 @@ def test_parse_expense_row_supports_dot_delimited_month_day_date_with_time():
         ]
     )
 
-    assert row.date == f"{date.today().year}-03-29"
+    assert row.date == "03-29"
 
 
 def test_parse_expense_row_rejects_invalid_synthesized_month_day_date_on_non_leap_year(
@@ -249,7 +261,7 @@ def test_parse_expense_row_allows_leap_day_month_day_date(monkeypatch):
         ]
     )
 
-    assert row.date == "2024-02-29"
+    assert row.date == "02-29"
 
 
 def test_extract_date_does_not_treat_plain_decimal_as_month_day():
