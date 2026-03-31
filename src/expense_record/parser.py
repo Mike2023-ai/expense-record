@@ -103,7 +103,9 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     has_transaction_content = False
     for line in lines:
         if pending_prefix and not _is_preamble_line(line) and not _looks_like_merchant_like_line(line):
-            if _looks_like_amount_line(line) and _pending_prefix_starts_new_transaction(pending_prefix):
+            if _looks_like_amount_line(line) and _pending_prefix_starts_new_transaction(
+                current_group, pending_prefix
+            ):
                 if current_group:
                     groups.append(current_group)
                 current_group = pending_prefix
@@ -237,11 +239,20 @@ def _is_preamble_line(line: str) -> bool:
     )
 
 
-def _pending_prefix_starts_new_transaction(lines: list[str]) -> bool:
+def _pending_prefix_starts_new_transaction(
+    current_group: list[str], lines: list[str]
+) -> bool:
+    current_group_has_date_or_time = _group_contains_date_or_time(current_group)
     return any(
-        _contains_payment_noise(line) or _contains_merchant_metadata(line)
+        (_looks_like_date_or_time(line) and current_group_has_date_or_time)
+        or _contains_payment_noise(line)
+        or _contains_merchant_metadata(line)
         for line in lines
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
+
+
+def _group_contains_date_or_time(lines: list[str]) -> bool:
+    return any(_looks_like_date_or_time(line) for line in lines)
 
 
 def _looks_like_merchant_like_line(line: str) -> bool:
