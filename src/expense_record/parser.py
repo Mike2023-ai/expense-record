@@ -17,6 +17,13 @@ MONTH_DAY_WITH_CHINESE_RE = re.compile(
     r"(?:\s*\d{1,2}:\d{2}(?::\d{2})?)?"
     r"(?=$|[\s)）\]\}】>,，。.!！？?])"
 )
+MONTH_DAY_WITH_CHINESE_AND_TIME_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])月(?:0?[1-9]|[12]\d|3[01])日)"
+    r"\s+"
+    r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?)"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
+)
 MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
     r"(?:^|[\s(（\[\{【<,，:：;；])"
     r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
@@ -250,7 +257,11 @@ def _pending_prefix_starts_new_transaction(
         or _contains_merchant_metadata(line)
         for line in lines
     ) or (
-        current_group_has_negative_amount and _contains_absolute_date_line(lines)
+        current_group_has_negative_amount
+        and (
+            _contains_absolute_date_line(lines)
+            or _contains_month_day_follow_up_date_line(lines)
+        )
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
 
 
@@ -332,3 +343,11 @@ def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
 
 def _contains_absolute_date_line(lines: list[str]) -> bool:
     return any(any(pattern.search(line) for pattern in DATE_PATTERNS) for line in lines)
+
+
+def _contains_month_day_follow_up_date_line(lines: list[str]) -> bool:
+    return any(
+        MONTH_DAY_WITH_CHINESE_AND_TIME_RE.search(line)
+        or MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line)
+        for line in lines
+    )
