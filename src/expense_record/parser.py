@@ -111,7 +111,7 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     for line in lines:
         if pending_prefix and not _is_preamble_line(line) and not _looks_like_merchant_like_line(line):
             if _looks_like_amount_line(line) and _pending_prefix_starts_new_transaction(
-                current_group, pending_prefix
+                current_group, pending_prefix, line
             ):
                 if current_group:
                     groups.append(current_group)
@@ -143,10 +143,8 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
 
 def _extract_date(lines: list[str]) -> str:
     for line in lines:
-        if date_text := _match_date_text(line):
+        if date_text := _match_accepted_date_text(line):
             if _is_separator_month_day_without_time_line(line):
-                if not _separator_month_day_is_unambiguous(date_text):
-                    continue
                 if not _separator_month_day_has_row_context(lines, line):
                     continue
             return _canonicalize_date(date_text)
@@ -165,6 +163,28 @@ def _match_date_text(line: str) -> str:
         return match.group("date")
     if match := MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line):
         return match.group("date")
+    return ""
+
+
+def _match_accepted_date_text(line: str) -> str:
+    if match := _match_date_text(line):
+        if any(pattern.search(line) for pattern in DATE_PATTERNS):
+            if _canonicalize_date(match):
+                return match
+        elif match := MONTH_DAY_WITH_CHINESE_RE.fullmatch(line):
+            if _canonicalize_date(match.group("date")):
+                return match.group("date")
+        elif match := MONTH_DAY_WITH_CHINESE_AND_TIME_RE.search(line):
+            if _canonicalize_date(match.group("date")):
+                return match.group("date")
+        elif match := MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line):
+            if _canonicalize_date(match.group("date")):
+                return match.group("date")
+        elif match := MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line):
+            if _separator_month_day_is_unambiguous(match.group("date")) and _canonicalize_date(
+                match.group("date")
+            ):
+                return match.group("date")
     return ""
 
 
@@ -209,7 +229,9 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
     for index, line in enumerate(lines):
         if line == date or line == amount:
             continue
-        if _looks_like_date_or_time(line) or _looks_like_amount_line(line):
+        if _looks_like_date_or_time(line) or _looks_like_date_token(line):
+            continue
+        if _looks_like_amount_line(line):
             continue
         if _contains_payment_noise(line):
             continue
@@ -225,11 +247,24 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
 
 
 def _looks_like_date_or_time(line: str) -> bool:
-    return bool(_match_date_text(line) or TIME_ONLY_RE.fullmatch(line))
+    return bool(_match_accepted_date_text(line) or TIME_ONLY_RE.fullmatch(line))
+
+
+def _looks_like_date_token(line: str) -> bool:
+    return bool(_match_date_text(line))
 
 
 def _looks_like_amount_line(line: str) -> bool:
     return _match_amount(line) != ""
+
+
+def _looks_like_currency_amount_line(line: str) -> bool:
+    stripped = line.strip()
+    return (
+        stripped.startswith(("￥", "¥", "CNY"))
+        or stripped.startswith(("金额", "付款", "支付", "实付", "消费", "支出", "合计", "总计"))
+        or stripped.endswith("元")
+    )
 
 
 def _contains_payment_noise(line: str) -> bool:
@@ -254,17 +289,23 @@ def _is_preamble_line(line: str) -> bool:
 
 
 def _pending_prefix_starts_new_transaction(
-    current_group: list[str], lines: list[str]
+    current_group: list[str], lines: list[str], current_line: str
 ) -> bool:
     current_group_has_positive_amount = _group_contains_positive_amount_line(current_group)
     current_group_has_negative_amount = _group_contains_negative_amount_line(current_group)
+    current_line_is_currency_amount = _looks_like_currency_amount_line(current_line)
     return any(
-        (_looks_like_date_or_time(line) and current_group_has_positive_amount)
+        (
+            _looks_like_date_or_time(line)
+            and current_group_has_positive_amount
+            and current_line_is_currency_amount
+        )
         or _contains_payment_noise(line)
         or _contains_merchant_metadata(line)
         for line in lines
     ) or (
         current_group_has_negative_amount
+        and current_line_is_currency_amount
         and (
             _contains_absolute_date_line(lines)
             or _contains_month_day_follow_up_date_line(lines)
@@ -293,6 +334,7 @@ def _group_contains_date_or_time(lines: list[str]) -> bool:
 def _looks_like_merchant_like_line(line: str) -> bool:
     return (
         not _looks_like_date_or_time(line)
+        and not _looks_like_date_token(line)
         and not _contains_payment_noise(line)
         and not _contains_merchant_metadata(line)
         and line not in {"商户", "商家", "名称"}
@@ -349,14 +391,17 @@ def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
 
 
 def _contains_absolute_date_line(lines: list[str]) -> bool:
-    return any(any(pattern.search(line) for pattern in DATE_PATTERNS) for line in lines)
+    return any(
+        _match_accepted_date_text(line)
+        and any(pattern.search(line) for pattern in DATE_PATTERNS)
+        for line in lines
+    )
 
 
 def _contains_month_day_follow_up_date_line(lines: list[str]) -> bool:
     return any(
-        MONTH_DAY_WITH_CHINESE_AND_TIME_RE.search(line)
-        or MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line)
-        or MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line)
+        _match_accepted_date_text(line)
+        and not any(pattern.search(line) for pattern in DATE_PATTERNS)
         for line in lines
     )
 
