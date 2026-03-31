@@ -250,3 +250,11 @@ def test_parse_expense_row_allows_leap_day_month_day_date(monkeypatch):
     )
 
     assert row.date == "2024-02-29"
+
+
+def test_extract_date_does_not_treat_plain_decimal_as_month_day():
+    assert parser_module._extract_date(["1.23"]) == ""
+
+
+def test_extract_date_does_not_treat_ambiguous_slash_token_as_month_day():
+    assert parser_module._extract_date(["11/12"]) == ""

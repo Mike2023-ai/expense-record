@@ -11,7 +11,9 @@ DATE_PATTERNS = (
     re.compile(r"(?P<date>\d{4}[-/.]\d{1,2}[-/.]\d{1,2})"),
     re.compile(r"(?P<date>\d{4}年\d{1,2}月\d{1,2}日)"),
     re.compile(r"(?P<date>(?<!\d)\d{1,2}月\d{1,2}日(?!\d))"),
-    re.compile(r"(?P<date>(?<!\d)(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01])(?!\d))"),
+)
+MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
+    r"(?P<date>(?<!\d)(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01])(?!\d))"
 )
 TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
@@ -71,10 +73,20 @@ def _normalize_lines(text_lines: str | Iterable[str]) -> list[str]:
 
 def _extract_date(lines: list[str]) -> str:
     for line in lines:
-        for pattern in DATE_PATTERNS:
-            match = pattern.search(line)
-            if match:
-                return _canonicalize_date(match.group("date"))
+        if date_text := _match_date_text(line):
+            return _canonicalize_date(date_text)
+    return ""
+
+
+def _match_date_text(line: str) -> str:
+    for pattern in DATE_PATTERNS:
+        match = pattern.search(line)
+        if match:
+            return match.group("date")
+    if TIME_SUFFIX_RE.search(line):
+        match = MONTH_DAY_WITH_SEPARATOR_RE.search(line)
+        if match:
+            return match.group("date")
     return ""
 
 
@@ -130,7 +142,7 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
 
 
 def _looks_like_date_or_time(line: str) -> bool:
-    return bool(any(pattern.search(line) for pattern in DATE_PATTERNS) or TIME_SUFFIX_RE.search(line))
+    return bool(_match_date_text(line) or TIME_SUFFIX_RE.search(line))
 
 
 def _looks_like_amount_line(line: str) -> bool:
