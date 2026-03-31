@@ -3,7 +3,7 @@ from datetime import date as real_date
 
 from expense_record.models import ExpenseRow
 import expense_record.parser as parser_module
-from expense_record.parser import parse_expense_row
+from expense_record.parser import extract_expense_rows, parse_expense_row
 
 
 class FixedDate(real_date):
@@ -240,6 +240,43 @@ def test_parse_expense_row_supports_realistic_month_day_row():
         merchant_item="扫二维码付款-给早餐",
         amount="5.00",
     )
+
+
+def test_extract_expense_rows_returns_single_row_through_new_entrypoint():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
+def test_extract_expense_rows_groups_multiple_transactions_and_drops_blank_rows():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "支付宝",
+            "2026-03-30 09:15",
+            "便利店",
+            "￥8.50",
+            "微信支付",
+            "支付成功",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
 
 
 def test_parse_expense_row_supports_dot_delimited_month_day_date_with_time():
