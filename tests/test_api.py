@@ -12,7 +12,7 @@ import sysconfig
 import pytest
 
 from expense_record.app import create_app
-from expense_record.config import DEFAULT_EXCEL_PATH
+from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -28,6 +28,17 @@ def test_index_page_contains_review_form_container():
 
     assert response.status_code == 200
     assert b'id="expense-form"' in response.data
+
+
+def test_index_page_shows_app_version():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+    expected_version = resolve_app_version()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert f"Version {expected_version}".encode() in response.data
 
 
 def test_frontend_ignores_stale_selection_work_and_resets_save_state():

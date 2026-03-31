@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from importlib import metadata
 import os
 from pathlib import Path
+import tomllib
 
 
 APP_DATA_DIR = Path.home() / ".expense-screenshot-tool"
@@ -17,9 +19,19 @@ def resolve_excel_path() -> Path:
     return DEFAULT_EXCEL_PATH
 
 
+def resolve_app_version() -> str:
+    try:
+        return metadata.version("expense-screenshot-tool")
+    except metadata.PackageNotFoundError:
+        pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        with pyproject_path.open("rb") as handle:
+            return tomllib.load(handle)["project"]["version"]
+
+
 class Config:
     SECRET_KEY = "dev"
     EXCEL_PATH = resolve_excel_path()
+    APP_VERSION = resolve_app_version()
 
 
 class TestConfig(Config):
