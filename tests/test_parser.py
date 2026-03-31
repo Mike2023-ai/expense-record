@@ -227,6 +227,19 @@ def test_parse_expense_row_supports_slash_month_day_date_with_time():
     assert row.date == "03-29"
 
 
+@pytest.mark.parametrize("date_text", ["3/30", "3.30"])
+def test_parse_expense_row_supports_separator_month_day_date_without_time(date_text):
+    row = parse_expense_row(
+        [
+            date_text,
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == "03-30"
+
+
 def test_parse_expense_row_supports_realistic_month_day_row():
     row = parse_expense_row(
         [
@@ -346,6 +359,25 @@ def test_extract_expense_rows_splits_date_only_follow_up_after_negative_dateless
     assert rows == [
         ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
         ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_date", ["3/30", "3.30"])
+def test_extract_expense_rows_splits_separator_date_only_follow_up_after_negative_dateless_amount_row(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-30", merchant_item="", amount="8.50"),
     ]
 
 

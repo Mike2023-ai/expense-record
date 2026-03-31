@@ -144,6 +144,11 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
 def _extract_date(lines: list[str]) -> str:
     for line in lines:
         if date_text := _match_date_text(line):
+            if _is_separator_month_day_without_time_line(line):
+                if not _separator_month_day_is_unambiguous(date_text):
+                    continue
+                if not _separator_month_day_has_row_context(lines, line):
+                    continue
             return _canonicalize_date(date_text)
     return ""
 
@@ -153,10 +158,12 @@ def _match_date_text(line: str) -> str:
         match = pattern.search(line)
         if match:
             return match.group("date")
-    match = MONTH_DAY_WITH_CHINESE_RE.search(line)
+    match = MONTH_DAY_WITH_CHINESE_RE.fullmatch(line)
     if match:
         return match.group("date")
     if match := MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line):
+        return match.group("date")
+    if match := MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line):
         return match.group("date")
     return ""
 
@@ -349,5 +356,27 @@ def _contains_month_day_follow_up_date_line(lines: list[str]) -> bool:
     return any(
         MONTH_DAY_WITH_CHINESE_AND_TIME_RE.search(line)
         or MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line)
+        or MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line)
         for line in lines
+    )
+
+
+def _is_separator_month_day_without_time_line(line: str) -> bool:
+    return bool(MONTH_DAY_WITH_SEPARATOR_RE.fullmatch(line))
+
+
+def _separator_month_day_is_unambiguous(date_text: str) -> bool:
+    month, day = (int(part) for part in date_text.replace(".", "/").split("/"))
+    return day > 12
+
+
+def _separator_month_day_has_row_context(lines: list[str], line: str) -> bool:
+    return any(
+        other != line
+        and (
+            _looks_like_amount_line(other)
+            or _looks_like_merchant_like_line(other)
+            or _looks_like_date_or_time(other)
+        )
+        for other in lines
     )
