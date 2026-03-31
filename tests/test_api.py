@@ -48,7 +48,8 @@ def test_index_page_explains_paste_works_anywhere():
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b"paste an image anywhere on the page" in response.data.lower()
+    assert b'id="paste-zone"' in response.data
+    assert b"clipboard" in response.data.lower()
 
 
 def test_index_page_shows_app_version():
