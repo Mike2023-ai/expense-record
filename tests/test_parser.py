@@ -1,5 +1,15 @@
+from datetime import date
+from datetime import date as real_date
+
 from expense_record.models import ExpenseRow
+import expense_record.parser as parser_module
 from expense_record.parser import parse_expense_row
+
+
+class FixedDate(real_date):
+    @classmethod
+    def today(cls):
+        return cls(2025, 1, 1)
 
 
 def test_parse_expense_row_extracts_chinese_text():
@@ -141,3 +151,138 @@ def test_parse_expense_row_handles_split_business_label_tokens():
     )
 
     assert row.merchant_item == "瑞幸咖啡"
+
+
+def test_parse_expense_row_supports_month_day_date_with_time():
+    row = parse_expense_row(
+        [
+            "3月29日 08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_month_day_date_without_time():
+    row = parse_expense_row(
+        [
+            "3月29日",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_slash_month_day_date_with_time():
+    row = parse_expense_row(
+        [
+            "3/29 08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_realistic_month_day_row():
+    row = parse_expense_row(
+        [
+            "扫二维码付款-给早餐",
+            "3月29日 08:42",
+            "-5.00",
+        ]
+    )
+
+    assert row == ExpenseRow(
+        date=f"{date.today().year}-03-29",
+        merchant_item="扫二维码付款-给早餐",
+        amount="5.00",
+    )
+
+
+def test_parse_expense_row_supports_dot_delimited_month_day_date_with_time():
+    row = parse_expense_row(
+        [
+            "3.29 08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_rejects_invalid_synthesized_month_day_date_on_non_leap_year(
+    monkeypatch,
+):
+    monkeypatch.setattr(parser_module, "date", FixedDate)
+
+    row = parse_expense_row(
+        [
+            "2月29日",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == ""
+
+
+def test_parse_expense_row_allows_leap_day_month_day_date(monkeypatch):
+    class LeapDate(real_date):
+        @classmethod
+        def today(cls):
+            return cls(2024, 1, 1)
+
+    monkeypatch.setattr(parser_module, "date", LeapDate)
+
+    row = parse_expense_row(
+        [
+            "2月29日",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == "2024-02-29"
+
+
+def test_extract_date_does_not_treat_plain_decimal_as_month_day():
+    assert parser_module._extract_date(["1.23"]) == ""
+
+
+def test_extract_date_does_not_treat_ambiguous_slash_token_as_month_day():
+    assert parser_module._extract_date(["11/12"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_slash_token_with_time_as_month_day():
+    assert parser_module._extract_date(["订单3/29 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_dot_token_with_time_as_month_day():
+    assert parser_module._extract_date(["备注 v3.29 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_alpha_suffixed_slash_token_with_time_as_month_day():
+    assert parser_module._extract_date(["3/29abc 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_chinese_month_day_inside_text():
+    assert parser_module._extract_date(["购买3月29日活动门票"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_chinese_month_day_with_time():
+    assert parser_module._extract_date(["订单3月29日 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_separated_slash_token_and_time_as_month_day():
+    assert parser_module._extract_date(["版本 3/29 更新于 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_separated_dot_token_and_time_as_month_day():
+    assert parser_module._extract_date(["3/29 note 08:42"]) == ""

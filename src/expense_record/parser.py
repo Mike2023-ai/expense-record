@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from collections.abc import Iterable
 
 from expense_record.models import ExpenseRow
@@ -10,7 +11,24 @@ DATE_PATTERNS = (
     re.compile(r"(?P<date>\d{4}[-/.]\d{1,2}[-/.]\d{1,2})"),
     re.compile(r"(?P<date>\d{4}年\d{1,2}月\d{1,2}日)"),
 )
-TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
+MONTH_DAY_WITH_CHINESE_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])月(?:0?[1-9]|[12]\d|3[01])日)"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
+)
+MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
+)
+MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
+    r"\s+"
+    r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?)"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
+)
+TIME_ONLY_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
 LABELLED_AMOUNT_RE = re.compile(
     r"^(?:金额|付款|支付|实付|消费|支出|合计|总计)\s*[:：]?\s*(?:￥|¥|CNY\s*)?(?P<amount>-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)"
@@ -68,10 +86,21 @@ def _normalize_lines(text_lines: str | Iterable[str]) -> list[str]:
 
 def _extract_date(lines: list[str]) -> str:
     for line in lines:
-        for pattern in DATE_PATTERNS:
-            match = pattern.search(line)
-            if match:
-                return _canonicalize_date(match.group("date"))
+        if date_text := _match_date_text(line):
+            return _canonicalize_date(date_text)
+    return ""
+
+
+def _match_date_text(line: str) -> str:
+    for pattern in DATE_PATTERNS:
+        match = pattern.search(line)
+        if match:
+            return match.group("date")
+    match = MONTH_DAY_WITH_CHINESE_RE.search(line)
+    if match:
+        return match.group("date")
+    if match := MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line):
+        return match.group("date")
     return ""
 
 
@@ -79,10 +108,22 @@ def _canonicalize_date(raw_date: str) -> str:
     cleaned = raw_date.replace("年", "-").replace("月", "-").replace("日", "")
     cleaned = cleaned.replace("/", "-").replace(".", "-")
     parts = cleaned.split("-")
+    if len(parts) == 2:
+        month, day = parts
+        return _canonicalize_month_day(int(month), int(day))
     if len(parts) != 3:
         return cleaned
     year, month, day = parts
     return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+
+def _canonicalize_month_day(month: int, day: int) -> str:
+    year = date.today().year
+    try:
+        date(year, month, day)
+    except ValueError:
+        return ""
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 def _extract_amount(lines: list[str]) -> str:
@@ -115,7 +156,7 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
 
 
 def _looks_like_date_or_time(line: str) -> bool:
-    return bool(any(pattern.search(line) for pattern in DATE_PATTERNS) or TIME_SUFFIX_RE.search(line))
+    return bool(_match_date_text(line) or TIME_ONLY_RE.fullmatch(line))
 
 
 def _looks_like_amount_line(line: str) -> bool:
