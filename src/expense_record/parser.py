@@ -242,13 +242,20 @@ def _is_preamble_line(line: str) -> bool:
 def _pending_prefix_starts_new_transaction(
     current_group: list[str], lines: list[str]
 ) -> bool:
-    current_group_has_date_or_time = _group_contains_date_or_time(current_group)
+    current_group_has_positive_amount = _group_contains_positive_amount_line(current_group)
     return any(
-        (_looks_like_date_or_time(line) and current_group_has_date_or_time)
+        (_looks_like_date_or_time(line) and current_group_has_positive_amount)
         or _contains_payment_noise(line)
         or _contains_merchant_metadata(line)
         for line in lines
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
+
+
+def _group_contains_positive_amount_line(lines: list[str]) -> bool:
+    return any(
+        (candidate := _match_amount_candidate(line)) is not None and not candidate[1]
+        for line in lines
+    )
 
 
 def _group_contains_date_or_time(lines: list[str]) -> bool:

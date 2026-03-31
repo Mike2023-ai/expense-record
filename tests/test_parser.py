@@ -316,6 +316,22 @@ def test_extract_expense_rows_keeps_date_only_prefix_merchantless_follow_up_sepa
     ]
 
 
+def test_extract_expense_rows_splits_date_only_follow_up_after_dateless_amount_row():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
 def test_extract_expense_rows_keeps_split_merchant_label_follow_up_separate():
     rows = extract_expense_rows(
         [
