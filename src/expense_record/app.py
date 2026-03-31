@@ -13,6 +13,6 @@ def create_app(config: dict | None = None) -> Flask:
 
     @app.get("/")
     def index() -> str:
-        return render_template("index.html")
+        return render_template("index.html", app_version=app.config["APP_VERSION"])
 
     return app

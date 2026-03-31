@@ -30,6 +30,16 @@ def test_index_page_contains_review_form_container():
     assert b'id="expense-form"' in response.data
 
 
+def test_index_page_shows_app_version():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"Version 0.1.0" in response.data
+
+
 def test_frontend_ignores_stale_selection_work_and_resets_save_state():
     script = textwrap.dedent(
         """

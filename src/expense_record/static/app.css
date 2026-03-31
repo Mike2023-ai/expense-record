@@ -64,9 +64,16 @@ body::before {
   line-height: 0.95;
 }
 
+.app-version {
+  margin: 12px 0 0;
+  color: var(--accent-strong);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .hero-copy {
   max-width: 56ch;
-  margin: 14px 0 0;
+  margin: 10px 0 0;
   color: var(--muted);
   font-size: 1.05rem;
 }
