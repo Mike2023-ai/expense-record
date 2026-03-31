@@ -270,3 +270,11 @@ def test_extract_date_does_not_treat_embedded_dot_token_with_time_as_month_day()
 
 def test_extract_date_does_not_treat_alpha_suffixed_slash_token_with_time_as_month_day():
     assert parser_module._extract_date(["3/29abc 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_chinese_month_day_inside_text():
+    assert parser_module._extract_date(["购买3月29日活动门票"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_chinese_month_day_with_time():
+    assert parser_module._extract_date(["订单3月29日 08:42"]) == ""

@@ -10,7 +10,11 @@ from expense_record.models import ExpenseRow
 DATE_PATTERNS = (
     re.compile(r"(?P<date>\d{4}[-/.]\d{1,2}[-/.]\d{1,2})"),
     re.compile(r"(?P<date>\d{4}年\d{1,2}月\d{1,2}日)"),
-    re.compile(r"(?P<date>(?<!\d)\d{1,2}月\d{1,2}日(?!\d))"),
+)
+MONTH_DAY_WITH_CHINESE_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])月(?:0?[1-9]|[12]\d|3[01])日)"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
 )
 MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
     r"(?:^|[\s(（\[\{【<,，:：;；])"
@@ -85,6 +89,9 @@ def _match_date_text(line: str) -> str:
         match = pattern.search(line)
         if match:
             return match.group("date")
+    match = MONTH_DAY_WITH_CHINESE_RE.search(line)
+    if match:
+        return match.group("date")
     if TIME_SUFFIX_RE.search(line):
         match = MONTH_DAY_WITH_SEPARATOR_RE.search(line)
         if match:
