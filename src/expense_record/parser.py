@@ -84,11 +84,20 @@ def _canonicalize_date(raw_date: str) -> str:
     parts = cleaned.split("-")
     if len(parts) == 2:
         month, day = parts
-        return f"{date.today().year:04d}-{int(month):02d}-{int(day):02d}"
+        return _canonicalize_month_day(int(month), int(day))
     if len(parts) != 3:
         return cleaned
     year, month, day = parts
     return f"{int(year):04d}-{int(month):02d}-{int(day):02d}"
+
+
+def _canonicalize_month_day(month: int, day: int) -> str:
+    year = date.today().year
+    try:
+        date(year, month, day)
+    except ValueError:
+        return ""
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 def _extract_amount(lines: list[str]) -> str:
