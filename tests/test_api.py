@@ -30,6 +30,17 @@ def test_index_page_contains_review_form_container():
     assert b'id="expense-form"' in response.data
 
 
+def test_index_page_contains_ocr_lines_debug_panel():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'id="ocr-lines-panel"' in response.data
+    assert b'id="ocr-lines-list"' in response.data
+
+
 def test_index_page_shows_app_version():
     app = create_app({"TESTING": True})
     client = app.test_client()
@@ -70,6 +81,13 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             appendChild(child) {
               this.children.push(child);
             },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
             removeAttribute(name) {
               if (name === "src") {
                 this.src = "";
@@ -86,6 +104,8 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
           "expense-form": makeElement("expense-form"),
           "date-input": makeElement("date-input"),
           "merchant-input": makeElement("merchant-input"),
@@ -122,10 +142,10 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         const pendingExtractResponses = [];
         const fetchCalls = [];
 
-        function makeResponse(row) {
+        function makeResponse(row, lines = []) {
           return {
             ok: true,
-            json: async () => ({ row }),
+            json: async () => ({ row, lines }),
           };
         }
 
@@ -222,7 +242,12 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
 
           extractHandler();
           const secondPendingExtract = pendingExtractResponses.shift();
-          secondPendingExtract(makeResponse({ date: "2026-03-31", merchant_item: "new", amount: "2.00" }));
+          secondPendingExtract(
+            makeResponse(
+              { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
+              ["2026-03-31", "new", "2.00"]
+            )
+          );
           await flush();
 
           fileReaderInstances[1].result = "data:second";
@@ -235,9 +260,16 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           assert.strictEqual(elements["amount-input"].value, "2.00");
           assert.strictEqual(elements["save-button"].disabled, false);
           assert.strictEqual(elements["extract-button"].disabled, false);
+          assert.strictEqual(elements["ocr-lines-panel"].hidden, false);
+          assert.deepStrictEqual(
+            elements["ocr-lines-list"].children.map((child) => child.textContent),
+            ["2026-03-31", "new", "2.00"]
+          );
           assert.ok(fetchCalls.some((call) => call.url === "/api/rows"));
 
           selectScreenshot("third.png");
+          assert.strictEqual(elements["ocr-lines-panel"].hidden, true);
+          assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
           extractHandler();
           const thirdPendingExtract = pendingExtractResponses.shift();
           thirdPendingExtract(
@@ -295,6 +327,13 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
             appendChild(child) {
               this.children.push(child);
             },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
             removeAttribute(name) {
               if (name === "src") {
                 this.src = "";
@@ -308,6 +347,8 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           "paste-zone": makeElement("paste-zone"),
           "preview-image": makeElement("preview-image"),
           "preview-caption": makeElement("preview-caption"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
@@ -321,6 +362,7 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
 
         const pendingExtractResponses = [];
         const pendingSaveResponses = [];
+        let rejectNextExtract = false;
 
         const sandbox = {
           console,
@@ -339,6 +381,10 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               return { ok: true, json: async () => ({ rows: [] }) };
             }
             if (url === "/api/extract") {
+              if (rejectNextExtract) {
+                rejectNextExtract = false;
+                throw new Error("network down");
+              }
               return await new Promise((resolve) => pendingExtractResponses.push(resolve));
             }
             if (url === "/api/save") {
@@ -386,6 +432,8 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               assert.strictEqual(elements["status-message"].textContent, "Extraction failed from API.");
               assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
               assert.strictEqual(elements["extract-button"].disabled, false);
+              assert.strictEqual(elements["ocr-lines-panel"].hidden, true);
+              assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
 
               elements["extract-button"].listeners.click();
               pendingExtractResponses.shift()({
@@ -405,10 +453,18 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               pendingSaveResponses.shift()({
                 ok: false,
                 json: async () => ({ error: "Save failed from API." }),
-          });
-          await flush();
-          assert.strictEqual(elements["status-message"].textContent, "Save failed from API.");
-          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+              });
+              await flush();
+              assert.strictEqual(elements["status-message"].textContent, "Save failed from API.");
+              assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+
+              rejectNextExtract = true;
+              elements["extract-button"].listeners.click();
+              await flush();
+              assert.strictEqual(elements["status-message"].textContent, "Extraction failed.");
+              assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+              assert.strictEqual(elements["ocr-lines-panel"].hidden, true);
+              assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
         }
 
         main().catch((error) => {

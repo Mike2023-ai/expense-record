@@ -204,6 +204,34 @@ input[type="file"] {
   font-size: 0.95rem;
 }
 
+.ocr-lines-panel {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(220, 203, 187, 0.85);
+  background: rgba(249, 244, 236, 0.9);
+  color: var(--muted);
+}
+
+.ocr-lines-label {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.ocr-lines-list {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .status-message {
   min-height: 1.4em;
   margin: 14px 0 0;

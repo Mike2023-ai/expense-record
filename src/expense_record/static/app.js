@@ -3,6 +3,8 @@ const elements = {
   pasteZone: document.getElementById("paste-zone"),
   previewImage: document.getElementById("preview-image"),
   previewCaption: document.getElementById("preview-caption"),
+  ocrLinesPanel: document.getElementById("ocr-lines-panel"),
+  ocrLinesList: document.getElementById("ocr-lines-list"),
   extractButton: document.getElementById("extract-button"),
   saveButton: document.getElementById("save-button"),
   statusMessage: document.getElementById("status-message"),
@@ -34,8 +36,33 @@ function clearPreview() {
   elements.previewImage.removeAttribute("src");
 }
 
+function clearOcrLines() {
+  elements.ocrLinesPanel.hidden = true;
+  while (elements.ocrLinesList.children.length) {
+    elements.ocrLinesList.removeChild(elements.ocrLinesList.children[0]);
+  }
+}
+
+function renderOcrLines(lines) {
+  clearOcrLines();
+
+  const visibleLines = Array.isArray(lines) ? lines : [];
+  if (!visibleLines.length) {
+    return;
+  }
+
+  for (const line of visibleLines) {
+    const item = document.createElement("li");
+    item.textContent = String(line ?? "");
+    elements.ocrLinesList.appendChild(item);
+  }
+
+  elements.ocrLinesPanel.hidden = false;
+}
+
 function resetSelectionState(label) {
   clearPreview();
+  clearOcrLines();
   elements.previewCaption.textContent = label;
   clearReviewForm();
   elements.saveButton.disabled = true;
@@ -128,6 +155,7 @@ async function extractRow() {
     }
 
     if (!response.ok) {
+      clearOcrLines();
       setStatus(data.error || "Extraction failed.", true);
       return;
     }
@@ -137,11 +165,13 @@ async function extractRow() {
     elements.amountInput.value = data.row?.amount ?? "";
     extractedSelectionToken = selectionToken;
     elements.saveButton.disabled = false;
+    renderOcrLines(data.lines);
     setStatus(data.warning || "Extraction complete. Review the row before saving.", Boolean(data.warning));
   } catch (_error) {
     if (selectionToken !== activeSelectionToken || requestToken !== latestExtractRequestToken) {
       return;
     }
+    clearOcrLines();
     setStatus("Extraction failed.", true);
   } finally {
     if (selectionToken === activeSelectionToken && requestToken === latestExtractRequestToken) {
