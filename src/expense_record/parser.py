@@ -103,8 +103,15 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     has_transaction_content = False
     for line in lines:
         if pending_prefix and not _is_preamble_line(line) and not _looks_like_merchant_like_line(line):
-            current_group.extend(pending_prefix)
-            pending_prefix = []
+            if _looks_like_amount_line(line) and _pending_prefix_starts_new_transaction(pending_prefix):
+                if current_group:
+                    groups.append(current_group)
+                current_group = pending_prefix
+                pending_prefix = []
+                has_transaction_content = False
+            else:
+                current_group.extend(pending_prefix)
+                pending_prefix = []
         if current_group and has_transaction_content and _looks_like_merchant_like_line(
             line
         ):
@@ -227,6 +234,13 @@ def _is_preamble_line(line: str) -> bool:
         or _contains_payment_noise(line)
         or _contains_merchant_metadata(line)
         or line in {"商户", "商家", "名称"}
+    )
+
+
+def _pending_prefix_starts_new_transaction(lines: list[str]) -> bool:
+    return any(
+        _contains_payment_noise(line) or _contains_merchant_metadata(line)
+        for line in lines
     )
 
 
