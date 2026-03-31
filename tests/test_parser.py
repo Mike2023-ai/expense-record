@@ -330,6 +330,25 @@ def test_extract_expense_rows_keeps_date_only_prefix_merchantless_follow_up_sepa
     ]
 
 
+@pytest.mark.parametrize("follow_up_amount", ["8.50", "-8.50"])
+def test_extract_expense_rows_splits_accepted_date_follow_up_with_bare_amount(
+    follow_up_amount,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "2026-03-30 09:15",
+            follow_up_amount,
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
 def test_extract_expense_rows_splits_date_only_follow_up_after_dateless_amount_row():
     rows = extract_expense_rows(
         [

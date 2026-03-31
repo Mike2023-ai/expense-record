@@ -304,6 +304,14 @@ def _pending_prefix_starts_new_transaction(
         or _contains_merchant_metadata(line)
         for line in lines
     ) or (
+        _pending_prefix_has_full_date(lines)
+        and current_group_has_positive_amount
+        and _looks_like_amount_line(current_line)
+    ) or (
+        _pending_prefix_has_full_date(lines)
+        and current_group_has_negative_amount
+        and _looks_like_amount_line(current_line)
+    ) or (
         current_group_has_negative_amount
         and current_line_is_currency_amount
         and _pending_prefix_has_accepted_date(lines, current_line)
@@ -389,6 +397,10 @@ def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
 
 def _pending_prefix_has_accepted_date(lines: list[str], current_line: str) -> bool:
     return bool(_extract_date([*lines, current_line]))
+
+
+def _pending_prefix_has_full_date(lines: list[str]) -> bool:
+    return any(any(pattern.search(line) for pattern in DATE_PATTERNS) for line in lines)
 
 
 def _is_separator_month_day_without_time_line(line: str) -> bool:
