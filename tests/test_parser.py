@@ -271,6 +271,22 @@ def test_extract_expense_rows_returns_single_row_through_new_entrypoint():
     ]
 
 
+def test_extract_expense_rows_keeps_two_description_lines_in_one_transaction():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "美式咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
 def test_extract_expense_rows_groups_multiple_transactions_and_drops_blank_rows():
     rows = extract_expense_rows(
         [

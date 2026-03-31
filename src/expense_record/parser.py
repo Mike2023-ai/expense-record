@@ -121,8 +121,11 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
             else:
                 current_group.extend(pending_prefix)
                 pending_prefix = []
-        if current_group and has_transaction_content and _looks_like_merchant_like_line(
-            line
+        if (
+            current_group
+            and has_transaction_content
+            and _group_contains_amount_line(current_group)
+            and _looks_like_merchant_like_line(line)
         ):
             groups.append(current_group)
             current_group = pending_prefix
@@ -329,6 +332,12 @@ def _group_contains_negative_amount_line(lines: list[str]) -> bool:
     return any(
         (candidate := _match_amount_candidate(line)) is not None and candidate[1]
         for line in lines
+    )
+
+
+def _group_contains_amount_line(lines: list[str]) -> bool:
+    return _group_contains_positive_amount_line(lines) or _group_contains_negative_amount_line(
+        lines
     )
 
 
