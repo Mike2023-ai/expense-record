@@ -84,7 +84,7 @@ def extract_expense_rows(text_lines: str | Iterable[str]) -> list[ExpenseRow]:
         for row in (
             parse_expense_row(group) for group in _group_expense_lines(lines)
         )
-        if any((row.date, row.merchant_item, row.amount))
+        if row.merchant_item or row.amount
     ]
 
 
@@ -99,11 +99,27 @@ def _normalize_lines(text_lines: str | Iterable[str]) -> list[str]:
 def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     groups: list[list[str]] = []
     current_group: list[str] = []
+    pending_prefix: list[str] = []
+    has_transaction_content = False
     for line in lines:
-        current_group.append(line)
-        if _looks_like_amount_line(line):
+        if pending_prefix and not _is_preamble_line(line) and not _looks_like_merchant_like_line(line):
+            current_group.extend(pending_prefix)
+            pending_prefix = []
+        if current_group and has_transaction_content and _looks_like_merchant_like_line(
+            line
+        ):
             groups.append(current_group)
-            current_group = []
+            current_group = pending_prefix
+            pending_prefix = []
+            has_transaction_content = False
+        if has_transaction_content and _is_preamble_line(line):
+            pending_prefix.append(line)
+            continue
+        current_group.append(line)
+        if _looks_like_merchant_like_line(line) or _looks_like_amount_line(line):
+            has_transaction_content = True
+    if pending_prefix:
+        current_group.extend(pending_prefix)
     if current_group:
         groups.append(current_group)
     return groups
@@ -203,6 +219,26 @@ def _contains_merchant_metadata(line: str) -> bool:
 
 def _contains_merchandise_signal(line: str) -> bool:
     return any("\u4e00" <= char <= "\u9fff" for char in line) or any(char.isalnum() for char in line)
+
+
+def _is_preamble_line(line: str) -> bool:
+    return (
+        _looks_like_date_or_time(line)
+        or _contains_payment_noise(line)
+        or _contains_merchant_metadata(line)
+        or line in {"商户", "商家", "名称"}
+    )
+
+
+def _looks_like_merchant_like_line(line: str) -> bool:
+    return (
+        not _looks_like_date_or_time(line)
+        and not _contains_payment_noise(line)
+        and not _contains_merchant_metadata(line)
+        and line not in {"商户", "商家", "名称"}
+        and not _looks_like_amount_line(line)
+        and _contains_merchandise_signal(line)
+    )
 
 
 def _match_amount(line: str) -> str:
