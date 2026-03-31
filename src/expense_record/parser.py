@@ -109,6 +109,32 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     pending_prefix: list[str] = []
     has_transaction_content = False
     for line in lines:
+        if pending_prefix and _looks_like_merchant_like_line(line):
+            if (
+                _group_contains_negative_amount_line(current_group)
+                and not _group_contains_date_or_time(current_group)
+            ):
+                if (
+                    _pending_prefix_has_accepted_date(pending_prefix, line)
+                    and _group_merchant_like_count(current_group) > 1
+                ):
+                    current_group.extend(pending_prefix)
+                    pending_prefix = []
+                else:
+                    groups.append(current_group)
+                    current_group = pending_prefix
+                    pending_prefix = []
+                    has_transaction_content = False
+            elif _pending_prefix_has_accepted_date(pending_prefix, line):
+                if _group_contains_date_or_time(current_group):
+                    if current_group:
+                        groups.append(current_group)
+                    current_group = pending_prefix
+                    pending_prefix = []
+                    has_transaction_content = False
+                else:
+                    current_group.extend(pending_prefix)
+                    pending_prefix = []
         if pending_prefix and not _is_preamble_line(line) and not _looks_like_merchant_like_line(line):
             if _looks_like_amount_line(line) and _pending_prefix_starts_new_transaction(
                 current_group, pending_prefix, line
@@ -125,12 +151,21 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
             current_group
             and has_transaction_content
             and _group_contains_amount_line(current_group)
+            and _group_contains_date_or_time(current_group)
             and _looks_like_merchant_like_line(line)
         ):
             groups.append(current_group)
             current_group = pending_prefix
             pending_prefix = []
             has_transaction_content = False
+        if (
+            has_transaction_content
+            and _group_contains_negative_amount_line(current_group)
+            and not _group_contains_date_or_time(current_group)
+            and _looks_like_date_token(line)
+        ):
+            pending_prefix.append(line)
+            continue
         if has_transaction_content and _is_preamble_line(line):
             pending_prefix.append(line)
             continue
@@ -343,6 +378,10 @@ def _group_contains_amount_line(lines: list[str]) -> bool:
 
 def _group_contains_date_or_time(lines: list[str]) -> bool:
     return any(_looks_like_date_or_time(line) for line in lines)
+
+
+def _group_merchant_like_count(lines: list[str]) -> int:
+    return sum(1 for line in lines if _looks_like_merchant_like_line(line))
 
 
 def _looks_like_merchant_like_line(line: str) -> bool:
