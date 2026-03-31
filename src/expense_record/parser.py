@@ -306,10 +306,7 @@ def _pending_prefix_starts_new_transaction(
     ) or (
         current_group_has_negative_amount
         and current_line_is_currency_amount
-        and (
-            _contains_absolute_date_line(lines)
-            or _contains_month_day_follow_up_date_line(lines)
-        )
+        and _pending_prefix_has_accepted_date(lines, current_line)
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
 
 
@@ -390,20 +387,8 @@ def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
     return False
 
 
-def _contains_absolute_date_line(lines: list[str]) -> bool:
-    return any(
-        _match_accepted_date_text(line)
-        and any(pattern.search(line) for pattern in DATE_PATTERNS)
-        for line in lines
-    )
-
-
-def _contains_month_day_follow_up_date_line(lines: list[str]) -> bool:
-    return any(
-        _match_accepted_date_text(line)
-        and not any(pattern.search(line) for pattern in DATE_PATTERNS)
-        for line in lines
-    )
+def _pending_prefix_has_accepted_date(lines: list[str], current_line: str) -> bool:
+    return bool(_extract_date([*lines, current_line]))
 
 
 def _is_separator_month_day_without_time_line(line: str) -> bool:

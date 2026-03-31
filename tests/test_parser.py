@@ -362,6 +362,26 @@ def test_extract_expense_rows_splits_date_only_follow_up_after_negative_dateless
     ]
 
 
+@pytest.mark.parametrize("follow_up_date", ["3月30日", "3月30日09:15"])
+def test_extract_expense_rows_splits_month_day_follow_up_after_negative_dateless_amount_row_with_merchant(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-30", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
 @pytest.mark.parametrize("follow_up_date", ["3/30", "3.30"])
 def test_extract_expense_rows_splits_separator_date_only_follow_up_after_negative_dateless_amount_row(
     follow_up_date,
@@ -400,6 +420,47 @@ def test_extract_expense_rows_splits_month_day_follow_up_after_negative_dateless
     assert rows == [
         ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
         ExpenseRow(date="03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_date", ["11/12"])
+def test_extract_expense_rows_keeps_ambiguous_separator_follow_up_with_negative_dateless_amount_row(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_invalid_chinese_month_day_follow_up_with_negative_dateless_amount_row(
+    monkeypatch,
+):
+    monkeypatch.setattr(parser_module, "date", FixedDate)
+
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "2月29日",
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="8.50"),
     ]
 
 
