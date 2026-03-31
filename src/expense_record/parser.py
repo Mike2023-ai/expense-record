@@ -243,17 +243,27 @@ def _pending_prefix_starts_new_transaction(
     current_group: list[str], lines: list[str]
 ) -> bool:
     current_group_has_positive_amount = _group_contains_positive_amount_line(current_group)
+    current_group_has_negative_amount = _group_contains_negative_amount_line(current_group)
     return any(
         (_looks_like_date_or_time(line) and current_group_has_positive_amount)
         or _contains_payment_noise(line)
         or _contains_merchant_metadata(line)
         for line in lines
+    ) or (
+        current_group_has_negative_amount and _contains_absolute_date_line(lines)
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
 
 
 def _group_contains_positive_amount_line(lines: list[str]) -> bool:
     return any(
         (candidate := _match_amount_candidate(line)) is not None and not candidate[1]
+        for line in lines
+    )
+
+
+def _group_contains_negative_amount_line(lines: list[str]) -> bool:
+    return any(
+        (candidate := _match_amount_candidate(line)) is not None and candidate[1]
         for line in lines
     )
 
@@ -318,3 +328,7 @@ def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
     if line == "名称" and index > 0 and lines[index - 1] in {"商户", "商家"}:
         return True
     return False
+
+
+def _contains_absolute_date_line(lines: list[str]) -> bool:
+    return any(any(pattern.search(line) for pattern in DATE_PATTERNS) for line in lines)
