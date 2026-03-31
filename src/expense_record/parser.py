@@ -21,7 +21,14 @@ MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
     r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
     r"(?=$|[\s)）\]\}】>,，。.!！？?])"
 )
-TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
+MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE = re.compile(
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
+    r"\s+"
+    r"(?P<time>\d{1,2}:\d{2}(?::\d{2})?)"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
+)
+TIME_ONLY_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?$")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
 LABELLED_AMOUNT_RE = re.compile(
     r"^(?:金额|付款|支付|实付|消费|支出|合计|总计)\s*[:：]?\s*(?:￥|¥|CNY\s*)?(?P<amount>-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)"
@@ -92,10 +99,8 @@ def _match_date_text(line: str) -> str:
     match = MONTH_DAY_WITH_CHINESE_RE.search(line)
     if match:
         return match.group("date")
-    if TIME_SUFFIX_RE.search(line):
-        match = MONTH_DAY_WITH_SEPARATOR_RE.search(line)
-        if match:
-            return match.group("date")
+    if match := MONTH_DAY_WITH_SEPARATOR_AND_TIME_RE.search(line):
+        return match.group("date")
     return ""
 
 
@@ -151,7 +156,7 @@ def _extract_merchant_item(lines: list[str], *, date: str, amount: str) -> str:
 
 
 def _looks_like_date_or_time(line: str) -> bool:
-    return bool(_match_date_text(line) or TIME_SUFFIX_RE.search(line))
+    return bool(_match_date_text(line) or TIME_ONLY_RE.fullmatch(line))
 
 
 def _looks_like_amount_line(line: str) -> bool:

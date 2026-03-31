@@ -278,3 +278,11 @@ def test_extract_date_does_not_treat_embedded_chinese_month_day_inside_text():
 
 def test_extract_date_does_not_treat_embedded_chinese_month_day_with_time():
     assert parser_module._extract_date(["订单3月29日 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_separated_slash_token_and_time_as_month_day():
+    assert parser_module._extract_date(["版本 3/29 更新于 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_separated_dot_token_and_time_as_month_day():
+    assert parser_module._extract_date(["3/29 note 08:42"]) == ""
