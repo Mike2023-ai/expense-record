@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import date
 from collections.abc import Iterable
 
 from expense_record.models import ExpenseRow
@@ -9,6 +10,8 @@ from expense_record.models import ExpenseRow
 DATE_PATTERNS = (
     re.compile(r"(?P<date>\d{4}[-/.]\d{1,2}[-/.]\d{1,2})"),
     re.compile(r"(?P<date>\d{4}年\d{1,2}月\d{1,2}日)"),
+    re.compile(r"(?P<date>(?<!\d)\d{1,2}月\d{1,2}日(?!\d))"),
+    re.compile(r"(?P<date>(?<!\d)(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01])(?!\d))"),
 )
 TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
@@ -79,6 +82,9 @@ def _canonicalize_date(raw_date: str) -> str:
     cleaned = raw_date.replace("年", "-").replace("月", "-").replace("日", "")
     cleaned = cleaned.replace("/", "-").replace(".", "-")
     parts = cleaned.split("-")
+    if len(parts) == 2:
+        month, day = parts
+        return f"{date.today().year:04d}-{int(month):02d}-{int(day):02d}"
     if len(parts) != 3:
         return cleaned
     year, month, day = parts

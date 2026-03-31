@@ -1,3 +1,5 @@
+from datetime import date
+
 from expense_record.models import ExpenseRow
 from expense_record.parser import parse_expense_row
 
@@ -141,3 +143,55 @@ def test_parse_expense_row_handles_split_business_label_tokens():
     )
 
     assert row.merchant_item == "瑞幸咖啡"
+
+
+def test_parse_expense_row_supports_month_day_date_with_time():
+    row = parse_expense_row(
+        [
+            "3月29日 08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_month_day_date_without_time():
+    row = parse_expense_row(
+        [
+            "3月29日",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_slash_month_day_date_with_time():
+    row = parse_expense_row(
+        [
+            "3/29 08:42",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == f"{date.today().year}-03-29"
+
+
+def test_parse_expense_row_supports_realistic_month_day_row():
+    row = parse_expense_row(
+        [
+            "扫二维码付款-给早餐",
+            "3月29日 08:42",
+            "-5.00",
+        ]
+    )
+
+    assert row == ExpenseRow(
+        date=f"{date.today().year}-03-29",
+        merchant_item="扫二维码付款-给早餐",
+        amount="5.00",
+    )
