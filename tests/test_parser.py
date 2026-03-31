@@ -85,6 +85,19 @@ def test_parse_expense_row_supports_amount_suffixes_and_labels():
     assert row.amount == "32.00"
 
 
+def test_parse_expense_row_prefers_negative_ocr_amount_over_crossed_out_positive_amount():
+    row = parse_expense_row(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "31.00",
+        ]
+    )
+
+    assert row == ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00")
+
+
 def test_parse_expense_row_extracts_labeled_merchant_name():
     row = parse_expense_row(
         [

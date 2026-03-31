@@ -128,12 +128,17 @@ def _canonicalize_month_day(month: int, day: int) -> str:
 
 
 def _extract_amount(lines: list[str]) -> str:
-    for line in reversed(lines):
+    candidates: list[tuple[str, bool]] = []
+    for line in lines:
         if _looks_like_date_or_time(line):
             continue
-        amount = _match_amount(line)
-        if amount:
+        if candidate := _match_amount_candidate(line):
+            candidates.append(candidate)
+    for amount, is_negative in candidates:
+        if is_negative:
             return amount
+    if candidates:
+        return candidates[-1][0]
     return ""
 
 
@@ -189,6 +194,22 @@ def _match_amount(line: str) -> str:
         if AMOUNT_BODY_RE.fullmatch(amount):
             return amount.removeprefix("-")
     return ""
+
+
+def _match_amount_candidate(line: str) -> tuple[str, bool] | None:
+    cleaned = line.replace(",", "").strip()
+    cleaned = cleaned.removeprefix("￥").removeprefix("¥")
+    cleaned = cleaned.removeprefix("CNY").strip()
+    if match := LABELLED_AMOUNT_RE.fullmatch(cleaned):
+        amount = match.group("amount")
+        return amount.removeprefix("-"), amount.startswith("-")
+    if AMOUNT_BODY_RE.fullmatch(cleaned):
+        return cleaned.removeprefix("-"), cleaned.startswith("-")
+    if cleaned.endswith("元"):
+        amount = cleaned.removesuffix("元").strip()
+        if AMOUNT_BODY_RE.fullmatch(amount):
+            return amount.removeprefix("-"), amount.startswith("-")
+    return None
 
 
 def _strip_merchant_label(line: str) -> str:
