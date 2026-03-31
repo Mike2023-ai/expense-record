@@ -258,3 +258,15 @@ def test_extract_date_does_not_treat_plain_decimal_as_month_day():
 
 def test_extract_date_does_not_treat_ambiguous_slash_token_as_month_day():
     assert parser_module._extract_date(["11/12"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_slash_token_with_time_as_month_day():
+    assert parser_module._extract_date(["订单3/29 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_embedded_dot_token_with_time_as_month_day():
+    assert parser_module._extract_date(["备注 v3.29 08:42"]) == ""
+
+
+def test_extract_date_does_not_treat_alpha_suffixed_slash_token_with_time_as_month_day():
+    assert parser_module._extract_date(["3/29abc 08:42"]) == ""

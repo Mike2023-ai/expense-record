@@ -13,7 +13,9 @@ DATE_PATTERNS = (
     re.compile(r"(?P<date>(?<!\d)\d{1,2}月\d{1,2}日(?!\d))"),
 )
 MONTH_DAY_WITH_SEPARATOR_RE = re.compile(
-    r"(?P<date>(?<!\d)(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01])(?!\d))"
+    r"(?:^|[\s(（\[\{【<,，:：;；])"
+    r"(?P<date>(?:0?[1-9]|1[0-2])[/.](?:0?[1-9]|[12]\d|3[01]))"
+    r"(?=$|[\s)）\]\}】>,，。.!！？?])"
 )
 TIME_SUFFIX_RE = re.compile(r"\s+\d{1,2}:\d{2}(?::\d{2})?")
 AMOUNT_BODY_RE = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?")
