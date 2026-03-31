@@ -235,15 +235,22 @@ function handleFileSelection(file) {
   setSelectedFile(file);
 }
 
-elements.fileInput.addEventListener("change", (event) => {
-  const [file] = event.target.files;
-  handleFileSelection(file);
-});
+function isEditablePasteTarget(target) {
+  if (!target) {
+    return false;
+  }
 
-elements.pasteZone.addEventListener("paste", (event) => {
+  const tagName = String(target.tagName ?? "").toUpperCase();
+  return tagName === "INPUT" || tagName === "TEXTAREA" || target.isContentEditable === true;
+}
+
+function handlePaste(event) {
+  if (isEditablePasteTarget(event.target)) {
+    return;
+  }
+
   const item = Array.from(event.clipboardData?.items ?? []).find((entry) => entry.type.startsWith("image/"));
   if (!item) {
-    setStatus("Clipboard does not contain an image.", true);
     return;
   }
 
@@ -253,8 +260,18 @@ elements.pasteZone.addEventListener("paste", (event) => {
     return;
   }
 
+  event.preventDefault();
   handleFileSelection(new File([file], file.name || "clipboard-snip.png", { type: file.type }));
+}
+
+elements.fileInput.addEventListener("change", (event) => {
+  const [file] = event.target.files;
+  handleFileSelection(file);
 });
+
+if (typeof document.addEventListener === "function") {
+  document.addEventListener("paste", handlePaste);
+}
 
 elements.extractButton.addEventListener("click", () => {
   void extractRow();

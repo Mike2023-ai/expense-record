@@ -41,6 +41,16 @@ def test_index_page_contains_ocr_lines_debug_panel():
     assert b'id="ocr-lines-list"' in response.data
 
 
+def test_index_page_explains_paste_works_anywhere():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b"paste an image anywhere on the page" in response.data.lower()
+
+
 def test_index_page_shows_app_version():
     app = create_app({"TESTING": True})
     client = app.test_client()
@@ -113,6 +123,10 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           "records-body": makeElement("records-body"),
         };
         elements["preview-image"].hidden = true;
+        elements["date-input"].tagName = "INPUT";
+        elements["merchant-input"].tagName = "INPUT";
+        elements["amount-input"].tagName = "INPUT";
+        const documentListeners = {};
 
         const fileReaderInstances = [];
         class FakeFileReader {
@@ -173,6 +187,9 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             throw new Error(`Unexpected fetch: ${url}`);
           },
           document: {
+            addEventListener(type, handler) {
+              documentListeners[type] = handler;
+            },
             getElementById(id) {
               return elements[id];
             },
@@ -196,6 +213,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
 
         const fileInputHandler = elements["file-input"].listeners.change;
         const extractHandler = elements["extract-button"].listeners.click;
+        const pasteHandler = documentListeners.paste;
 
         function selectScreenshot(name) {
           fileInputHandler({
@@ -208,6 +226,50 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
               ],
             },
           });
+        }
+
+        function pasteImage(name) {
+          const event = {
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+            clipboardData: {
+              items: [
+                {
+                  type: "image/png",
+                  getAsFile() {
+                    return { name, type: "image/png" };
+                  },
+                },
+              ],
+            },
+            target: elements["paste-zone"],
+          };
+          pasteHandler(event);
+          return event;
+        }
+
+        function pasteTextIntoInput(target) {
+          const event = {
+            defaultPrevented: false,
+            preventDefault() {
+              this.defaultPrevented = true;
+            },
+            clipboardData: {
+              items: [
+                {
+                  type: "text/plain",
+                  getAsFile() {
+                    return null;
+                  },
+                },
+              ],
+            },
+            target,
+          };
+          pasteHandler(event);
+          return event;
         }
 
         function flush() {
@@ -266,6 +328,22 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             ["2026-03-31", "new", "2.00"]
           );
           assert.ok(fetchCalls.some((call) => call.url === "/api/rows"));
+
+          const imagePasteEvent = pasteImage("clipboard.png");
+          assert.strictEqual(imagePasteEvent.defaultPrevented, true);
+          assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
+          assert.strictEqual(fileReaderInstances.length, 3);
+
+          fileReaderInstances[2].result = "data:clipboard";
+          fileReaderInstances[2].onload();
+          await flush();
+          assert.strictEqual(elements["preview-image"].src, "data:clipboard");
+
+          const inputPasteEvent = pasteTextIntoInput(elements["date-input"]);
+          assert.strictEqual(inputPasteEvent.defaultPrevented, false);
+          assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
+          assert.strictEqual(elements["preview-image"].src, "data:clipboard");
+          assert.strictEqual(fileReaderInstances.length, 3);
 
           selectScreenshot("third.png");
           assert.strictEqual(elements["ocr-lines-panel"].hidden, true);
