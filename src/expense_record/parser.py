@@ -134,7 +134,7 @@ def _extract_amount(lines: list[str]) -> str:
             continue
         if candidate := _match_amount_candidate(line):
             candidates.append(candidate)
-    for amount, is_negative in candidates:
+    for amount, is_negative in reversed(candidates):
         if is_negative:
             return amount
     if candidates:
@@ -182,24 +182,17 @@ def _contains_merchandise_signal(line: str) -> bool:
 
 
 def _match_amount(line: str) -> str:
-    cleaned = line.replace(",", "").strip()
-    cleaned = cleaned.removeprefix("￥").removeprefix("¥")
-    cleaned = cleaned.removeprefix("CNY").strip()
-    if match := LABELLED_AMOUNT_RE.fullmatch(cleaned):
-        return match.group("amount").removeprefix("-")
-    if AMOUNT_BODY_RE.fullmatch(cleaned):
-        return cleaned.removeprefix("-")
-    if cleaned.endswith("元"):
-        amount = cleaned.removesuffix("元").strip()
-        if AMOUNT_BODY_RE.fullmatch(amount):
-            return amount.removeprefix("-")
+    if candidate := _parse_amount_candidate(line):
+        return candidate[0]
     return ""
 
 
 def _match_amount_candidate(line: str) -> tuple[str, bool] | None:
-    cleaned = line.replace(",", "").strip()
-    cleaned = cleaned.removeprefix("￥").removeprefix("¥")
-    cleaned = cleaned.removeprefix("CNY").strip()
+    return _parse_amount_candidate(line)
+
+
+def _parse_amount_candidate(line: str) -> tuple[str, bool] | None:
+    cleaned = _clean_amount_text(line)
     if match := LABELLED_AMOUNT_RE.fullmatch(cleaned):
         amount = match.group("amount")
         return amount.removeprefix("-"), amount.startswith("-")
@@ -210,6 +203,13 @@ def _match_amount_candidate(line: str) -> tuple[str, bool] | None:
         if AMOUNT_BODY_RE.fullmatch(amount):
             return amount.removeprefix("-"), amount.startswith("-")
     return None
+
+
+def _clean_amount_text(line: str) -> str:
+    cleaned = line.replace(",", "").strip()
+    cleaned = cleaned.removeprefix("￥").removeprefix("¥")
+    cleaned = cleaned.removeprefix("CNY").strip()
+    return cleaned
 
 
 def _strip_merchant_label(line: str) -> str:
