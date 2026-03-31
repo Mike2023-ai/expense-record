@@ -298,6 +298,25 @@ def test_extract_expense_rows_keeps_merchantless_follow_up_separate():
     ]
 
 
+def test_extract_expense_rows_keeps_split_merchant_label_follow_up_separate():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "商户",
+            "名称",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="", merchant_item="", amount="8.50"),
+    ]
+
+
 def test_extract_expense_rows_keeps_multiple_amount_lines_in_one_transaction():
     rows = extract_expense_rows(
         [

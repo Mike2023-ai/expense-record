@@ -241,7 +241,7 @@ def _pending_prefix_starts_new_transaction(lines: list[str]) -> bool:
     return any(
         _contains_payment_noise(line) or _contains_merchant_metadata(line)
         for line in lines
-    )
+    ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
 
 
 def _looks_like_merchant_like_line(line: str) -> bool:
