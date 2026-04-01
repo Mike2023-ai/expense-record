@@ -331,6 +331,48 @@ def test_extract_expense_rows_groups_multiple_transactions_and_drops_blank_rows(
     ]
 
 
+def test_extract_expense_rows_ignores_bank_list_headers_and_search_summary():
+    rows = extract_expense_rows(
+        [
+            "2026年3月",
+            "支出¥10185.76 收入¥1419.99",
+            "查找交易",
+            "3月30日 08:31",
+            "叫了个炸鸡",
+            "-26.50",
+            "3月29日 18:44",
+            "商户-沈菊",
+            "-10.00",
+            "3月29日 18:41",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-30", merchant_item="叫了个炸鸡", amount="26.50"),
+        ExpenseRow(date="03-29", merchant_item="沈菊", amount="10.00"),
+    ]
+
+
+def test_extract_expense_rows_ignores_top_nav_label_and_status_number():
+    rows = extract_expense_rows(
+        [
+            "974",
+            "收支统计>",
+            "3月30日 08:31",
+            "叫了个炸鸡",
+            "-26.50",
+            "3月29日 18:44",
+            "商户-沈菊",
+            "-10.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-30", merchant_item="叫了个炸鸡", amount="26.50"),
+        ExpenseRow(date="03-29", merchant_item="沈菊", amount="10.00"),
+    ]
+
+
 def test_extract_expense_rows_keeps_merchantless_follow_up_separate():
     rows = extract_expense_rows(
         [
@@ -693,6 +735,60 @@ def test_extract_expense_rows_keeps_negative_amount_date_description_before_next
             merchant_item="扫二维码付款-给早餐",
             amount="5.00",
         ),
+    ]
+
+
+def test_extract_expense_rows_keeps_trailing_date_on_same_merchant_amount_row():
+    rows = extract_expense_rows(
+        [
+            "商户_沈菊",
+            "-10.00",
+            "3月29日18:41",
+            "海门区峻恺餐饮店",
+            "-336.00",
+            "3月27日23:19",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-29", merchant_item="沈菊", amount="10.00"),
+        ExpenseRow(date="03-27", merchant_item="海门区峻恺餐饮店", amount="336.00"),
+    ]
+
+
+def test_extract_expense_rows_parses_dense_bank_list_with_trailing_dates():
+    rows = extract_expense_rows(
+        [
+            "叫了个炸鸡",
+            "-26.50",
+            "美团",
+            "3月29日18:44",
+            "商户_沈菊",
+            "-10.00",
+            "3月29日18:41",
+            "扫二维码付款-给早餐",
+            "-5.00",
+            "3月29日08:42",
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "31.00",
+            "海门区峻恺餐饮店",
+            "-336.00",
+            "3月27日23:19",
+            "滴滴出行",
+            "-9.30",
+            "3月27日18:59",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-29", merchant_item="叫了个炸鸡", amount="26.50"),
+        ExpenseRow(date="03-29", merchant_item="沈菊", amount="10.00"),
+        ExpenseRow(date="03-29", merchant_item="扫二维码付款-给早餐", amount="5.00"),
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-27", merchant_item="海门区峻恺餐饮店", amount="336.00"),
+        ExpenseRow(date="03-27", merchant_item="滴滴出行", amount="9.30"),
     ]
 
 

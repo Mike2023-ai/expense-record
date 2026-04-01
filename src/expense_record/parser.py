@@ -74,6 +74,17 @@ MERCHANT_METADATA_PREFIXES = (
     "流水号",
     "订单号",
 )
+LIST_HEADER_NOISE = (
+    "查找交易",
+    "全部账单",
+    "收支统计",
+    "收支统计>",
+)
+YEAR_MONTH_ONLY_RE = re.compile(r"^\d{4}年\d{1,2}月$")
+SUMMARY_TOTALS_RE = re.compile(
+    r"^支出\s*(?:￥|¥)?\d[\d,.]*\s+收入\s*(?:￥|¥)?\d[\d,.]*$"
+)
+STATUS_NUMBER_RE = re.compile(r"^\d{1,4}$")
 
 
 def parse_expense_row(text_lines: str | Iterable[str]) -> ExpenseRow:
@@ -99,7 +110,11 @@ def _normalize_lines(text_lines: str | Iterable[str]) -> list[str]:
         candidates = text_lines.splitlines()
     else:
         candidates = list(text_lines)
-    return [line.strip() for line in candidates if line and line.strip()]
+    return [
+        line.strip()
+        for line in candidates
+        if line and line.strip() and not _is_list_header_noise_line(line.strip())
+    ]
 
 
 def _group_expense_lines(lines: list[str]) -> list[list[str]]:
@@ -114,6 +129,12 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
                 and not _group_contains_date_or_time(current_group)
             ):
                 if _group_merchant_like_count(current_group) > 1:
+                    current_group.extend(pending_prefix)
+                    pending_prefix = []
+                elif _pending_prefix_has_accepted_date(pending_prefix, line) and (
+                    not _amount_arrives_before_next_merchant(lines, index)
+                    or _next_amount_before_next_merchant_is_negative(lines, index)
+                ):
                     current_group.extend(pending_prefix)
                     pending_prefix = []
                 elif _amount_arrives_before_next_merchant(lines, index):
@@ -464,8 +485,17 @@ def _clean_amount_text(line: str) -> str:
 def _strip_merchant_label(line: str) -> str:
     for label in MERCHANT_LABELS:
         if line.startswith(label):
-            return line[len(label) :].strip(" ：:，,")
+            return line[len(label) :].strip(" ：:，,-_")
     return line
+
+
+def _is_list_header_noise_line(line: str) -> bool:
+    return (
+        line in LIST_HEADER_NOISE
+        or bool(YEAR_MONTH_ONLY_RE.fullmatch(line))
+        or bool(SUMMARY_TOTALS_RE.fullmatch(line))
+        or bool(STATUS_NUMBER_RE.fullmatch(line))
+    )
 
 
 def _is_split_merchant_label_piece(lines: list[str], index: int) -> bool:
@@ -492,6 +522,15 @@ def _pending_prefix_has_transaction_marker(lines: list[str]) -> bool:
         or _is_split_merchant_label_piece(lines, index)
         for index, line in enumerate(lines)
     )
+
+
+def _next_amount_before_next_merchant_is_negative(lines: list[str], start_index: int) -> bool:
+    for line in lines[start_index + 1 :]:
+        if _looks_like_merchant_like_line(line):
+            return False
+        if candidate := _match_amount_candidate(line):
+            return candidate[1]
+    return False
 
 
 def _is_separator_month_day_without_time_line(line: str) -> bool:
