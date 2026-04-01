@@ -108,23 +108,23 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
     current_group: list[str] = []
     pending_prefix: list[str] = []
     has_transaction_content = False
-    for line in lines:
+    for index, line in enumerate(lines):
         if pending_prefix and _looks_like_merchant_like_line(line):
             if (
                 _group_contains_negative_amount_line(current_group)
                 and not _group_contains_date_or_time(current_group)
             ):
-                if (
-                    _pending_prefix_has_accepted_date(pending_prefix, line)
-                    and _group_merchant_like_count(current_group) > 1
-                ):
+                if _group_merchant_like_count(current_group) > 1:
                     current_group.extend(pending_prefix)
                     pending_prefix = []
-                else:
+                elif _amount_arrives_before_next_merchant(lines, index):
                     groups.append(current_group)
                     current_group = pending_prefix
                     pending_prefix = []
                     has_transaction_content = False
+                else:
+                    current_group.extend(pending_prefix)
+                    pending_prefix = []
             elif _pending_prefix_has_accepted_date(pending_prefix, line):
                 if _group_contains_date_or_time(current_group):
                     if current_group:
@@ -153,6 +153,7 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
             and _group_contains_amount_line(current_group)
             and _group_contains_date_or_time(current_group)
             and _looks_like_merchant_like_line(line)
+            and _amount_arrives_before_next_merchant(lines, index)
         ):
             groups.append(current_group)
             current_group = pending_prefix
@@ -470,3 +471,12 @@ def _separator_month_day_has_row_context(lines: list[str], line: str) -> bool:
         )
         for other in lines
     )
+
+
+def _amount_arrives_before_next_merchant(lines: list[str], index: int) -> bool:
+    for line in lines[index + 1 :]:
+        if _looks_like_amount_line(line):
+            return True
+        if _looks_like_merchant_like_line(line):
+            return False
+    return False

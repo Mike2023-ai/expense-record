@@ -602,6 +602,44 @@ def test_extract_expense_rows_keeps_description_line_with_negative_amount_before
     ]
 
 
+def test_extract_expense_rows_keeps_date_then_description_in_one_negative_amount_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "优惠券",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+    ]
+
+
+def test_extract_expense_rows_keeps_negative_amount_date_description_before_next_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "优惠券",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(
+            date="03-29",
+            merchant_item="扫二维码付款-给早餐",
+            amount="5.00",
+        ),
+    ]
+
+
 def test_extract_expense_rows_splits_partial_row_before_follow_up_date_merchant_amount():
     rows = extract_expense_rows(
         [
