@@ -8,10 +8,7 @@ const elements = {
   extractButton: document.getElementById("extract-button"),
   saveButton: document.getElementById("save-button"),
   statusMessage: document.getElementById("status-message"),
-  form: document.getElementById("expense-form"),
-  dateInput: document.getElementById("date-input"),
-  merchantInput: document.getElementById("merchant-input"),
-  amountInput: document.getElementById("amount-input"),
+  reviewBody: document.getElementById("review-body"),
   recordsBody: document.getElementById("records-body"),
 };
 
@@ -25,27 +22,24 @@ function setStatus(message, isError = false) {
   elements.statusMessage.style.color = isError ? "#9d2d22" : "";
 }
 
-function clearReviewForm() {
-  elements.dateInput.value = "";
-  elements.merchantInput.value = "";
-  elements.amountInput.value = "";
-}
-
 function clearPreview() {
   elements.previewImage.hidden = true;
   elements.previewImage.removeAttribute("src");
 }
 
+function clearChildren(element) {
+  while (element.children.length) {
+    element.removeChild(element.children[0]);
+  }
+}
+
 function clearOcrLines() {
   elements.ocrLinesPanel.hidden = true;
-  while (elements.ocrLinesList.children.length) {
-    elements.ocrLinesList.removeChild(elements.ocrLinesList.children[0]);
-  }
+  clearChildren(elements.ocrLinesList);
 }
 
 function renderOcrLines(lines) {
   clearOcrLines();
-
   const visibleLines = Array.isArray(lines) ? lines : [];
   if (!visibleLines.length) {
     return;
@@ -56,16 +50,56 @@ function renderOcrLines(lines) {
     item.textContent = String(line ?? "");
     elements.ocrLinesList.appendChild(item);
   }
-
   elements.ocrLinesPanel.hidden = false;
+}
+
+function clearReviewRows() {
+  clearChildren(elements.reviewBody);
+}
+
+function createInputCell(value, placeholder) {
+  const td = document.createElement("td");
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = String(value ?? "");
+  input.placeholder = placeholder;
+  td.appendChild(input);
+  return td;
+}
+
+function renderReviewRows(rows) {
+  clearReviewRows();
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  for (const row of normalizedRows) {
+    const tr = document.createElement("tr");
+
+    const checkboxCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    checkboxCell.appendChild(checkbox);
+    tr.appendChild(checkboxCell);
+
+    tr.appendChild(createInputCell(row.date, "MM-DD"));
+    tr.appendChild(createInputCell(row.merchant_item, "Merchant or description"));
+    tr.appendChild(createInputCell(row.amount, "0.00"));
+
+    elements.reviewBody.appendChild(tr);
+  }
+
+  elements.saveButton.disabled = normalizedRows.length === 0;
+}
+
+function clearReviewState() {
+  clearReviewRows();
+  elements.saveButton.disabled = true;
 }
 
 function resetSelectionState(label) {
   clearPreview();
   clearOcrLines();
   elements.previewCaption.textContent = label;
-  clearReviewForm();
-  elements.saveButton.disabled = true;
+  clearReviewState();
   extractedSelectionToken = 0;
 }
 
@@ -132,7 +166,7 @@ async function loadRows() {
   renderRows(Array.isArray(data.rows) ? data.rows : []);
 }
 
-async function extractRow() {
+async function extractRows() {
   if (!selectedFile) {
     setStatus("Select or paste an image before extracting.", true);
     return;
@@ -156,22 +190,24 @@ async function extractRow() {
 
     if (!response.ok) {
       clearOcrLines();
+      clearReviewState();
       setStatus(data.error || "Extraction failed.", true);
       return;
     }
 
-    elements.dateInput.value = data.row?.date ?? "";
-    elements.merchantInput.value = data.row?.merchant_item ?? "";
-    elements.amountInput.value = data.row?.amount ?? "";
-    extractedSelectionToken = selectionToken;
-    elements.saveButton.disabled = false;
+    renderReviewRows(data.rows);
     renderOcrLines(data.lines);
-    setStatus(data.warning || "Extraction complete. Review the row before saving.", Boolean(data.warning));
+    extractedSelectionToken = Array.isArray(data.rows) && data.rows.length > 0 ? selectionToken : 0;
+    setStatus(
+      data.warning || "Extraction complete. Review the rows before saving.",
+      Boolean(data.warning)
+    );
   } catch (_error) {
     if (selectionToken !== activeSelectionToken || requestToken !== latestExtractRequestToken) {
       return;
     }
     clearOcrLines();
+    clearReviewState();
     setStatus("Extraction failed.", true);
   } finally {
     if (selectionToken === activeSelectionToken && requestToken === latestExtractRequestToken) {
@@ -180,8 +216,16 @@ async function extractRow() {
   }
 }
 
-async function saveRow(event) {
-  event.preventDefault();
+function collectReviewRows() {
+  return elements.reviewBody.children.map((row) => ({
+    selected: Boolean(row.children[0].children[0].checked),
+    date: row.children[1].children[0].value.trim(),
+    merchant_item: row.children[2].children[0].value.trim(),
+    amount: row.children[3].children[0].value.trim(),
+  }));
+}
+
+async function saveRows() {
   if (elements.saveButton.disabled || extractedSelectionToken !== activeSelectionToken) {
     setStatus("Extract the current screenshot before saving.", true);
     return;
@@ -190,17 +234,11 @@ async function saveRow(event) {
   const selectionToken = activeSelectionToken;
   elements.saveButton.disabled = true;
 
-  const payload = {
-    date: elements.dateInput.value.trim(),
-    merchant_item: elements.merchantInput.value.trim(),
-    amount: elements.amountInput.value.trim(),
-  };
-
   try {
     const response = await fetch("/api/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ rows: collectReviewRows() }),
     });
     const data = await response.json();
 
@@ -214,7 +252,7 @@ async function saveRow(event) {
     }
 
     renderRows(Array.isArray(data.rows) ? data.rows : []);
-    setStatus("Row saved to Excel.");
+    setStatus("Rows saved to Excel.");
   } catch (_error) {
     if (selectionToken !== activeSelectionToken) {
       return;
@@ -231,7 +269,6 @@ function handleFileSelection(file) {
   if (!file) {
     return;
   }
-
   setSelectedFile(file);
 }
 
@@ -239,7 +276,6 @@ function isEditablePasteTarget(target) {
   if (!target) {
     return false;
   }
-
   const tagName = String(target.tagName ?? "").toUpperCase();
   return tagName === "INPUT" || tagName === "TEXTAREA" || target.isContentEditable === true;
 }
@@ -274,11 +310,11 @@ if (typeof document.addEventListener === "function") {
 }
 
 elements.extractButton.addEventListener("click", () => {
-  void extractRow();
+  void extractRows();
 });
 
-elements.form.addEventListener("submit", (event) => {
-  void saveRow(event);
+elements.saveButton.addEventListener("click", () => {
+  void saveRows();
 });
 
 elements.extractButton.disabled = true;

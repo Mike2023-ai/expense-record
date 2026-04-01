@@ -20,24 +20,26 @@ from packaging.utils import canonicalize_name
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_index_page_contains_review_form_container():
+def test_index_page_contains_review_table_container():
     app = create_app({"TESTING": True})
     client = app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'id="expense-form"' in response.data
+    assert b'id="review-table"' in response.data
+    assert b'id="review-body"' in response.data
 
 
-def test_index_page_uses_month_day_date_placeholder():
+def test_index_page_uses_review_table_columns():
     app = create_app({"TESTING": True})
     client = app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'placeholder="MM-DD"' in response.data
+    assert b"Use" in response.data
+    assert b"Merchant / Item" in response.data
 
 
 def test_index_page_contains_ocr_lines_debug_panel():
@@ -89,8 +91,11 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             disabled: false,
             hidden: false,
             value: "",
+            checked: false,
             textContent: "",
             innerHTML: "",
+            className: "",
+            type: "",
             src: "",
             style: {},
             files: [],
@@ -108,6 +113,9 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
                 this.children.splice(index, 1);
               }
               return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
             },
             removeAttribute(name) {
               if (name === "src") {
@@ -127,16 +135,11 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           "status-message": makeElement("status-message"),
           "ocr-lines-panel": makeElement("ocr-lines-panel"),
           "ocr-lines-list": makeElement("ocr-lines-list"),
-          "expense-form": makeElement("expense-form"),
-          "date-input": makeElement("date-input"),
-          "merchant-input": makeElement("merchant-input"),
-          "amount-input": makeElement("amount-input"),
+          "review-table": makeElement("review-table"),
+          "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
         elements["preview-image"].hidden = true;
-        elements["date-input"].tagName = "INPUT";
-        elements["merchant-input"].tagName = "INPUT";
-        elements["amount-input"].tagName = "INPUT";
         const documentListeners = {};
 
         const fileReaderInstances = [];
@@ -165,12 +168,17 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         }
 
         const pendingExtractResponses = [];
+        const pendingSaveResponses = [];
         const fetchCalls = [];
 
-        function makeResponse(row, lines = []) {
+        function makeResponse(rows, lines = [], warning = "") {
+          const payload = { rows, lines };
+          if (warning) {
+            payload.warning = warning;
+          }
           return {
             ok: true,
-            json: async () => ({ row, lines }),
+            json: async () => payload,
           };
         }
 
@@ -193,7 +201,9 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
               });
             }
             if (url === "/api/save") {
-              return { ok: true, json: async () => ({ rows: [] }) };
+              return await new Promise((resolve) => {
+                pendingSaveResponses.push(resolve);
+              });
             }
             throw new Error(`Unexpected fetch: ${url}`);
           },
@@ -205,15 +215,10 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
               return elements[id];
             },
             createElement(tag) {
-              return {
-                tagName: String(tag).toUpperCase(),
-                textContent: "",
-                colSpan: 0,
-                children: [],
-                appendChild(child) {
-                  this.children.push(child);
-                },
-              };
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
             },
           },
         };
@@ -290,7 +295,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         async function main() {
           selectScreenshot("first.png");
           assert.strictEqual(elements["preview-caption"].textContent, "first.png");
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
           assert.strictEqual(fileReaderInstances.length, 1);
 
@@ -302,22 +307,25 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
           assert.strictEqual(elements["preview-image"].src, "");
           assert.strictEqual(elements["preview-caption"].textContent, "second.png");
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
 
           assert.strictEqual(fileReaderInstances.length, 2);
 
           const firstPendingExtract = pendingExtractResponses.shift();
-          firstPendingExtract(makeResponse({ date: "2026-03-30", merchant_item: "old", amount: "1.00" }));
+          firstPendingExtract(makeResponse([{ date: "2026-03-30", merchant_item: "old", amount: "1.00" }]));
           await flush();
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
 
           extractHandler();
           const secondPendingExtract = pendingExtractResponses.shift();
           secondPendingExtract(
             makeResponse(
-              { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
+              [
+                { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
+                { date: "2026-04-01", merchant_item: "skip", amount: "3.00" },
+              ],
               ["2026-03-31", "new", "2.00"]
             )
           );
@@ -328,9 +336,14 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
 
           assert.strictEqual(elements["preview-image"].src, "data:second");
-          assert.strictEqual(elements["date-input"].value, "2026-03-31");
-          assert.strictEqual(elements["merchant-input"].value, "new");
-          assert.strictEqual(elements["amount-input"].value, "2.00");
+          assert.strictEqual(elements["review-body"].children.length, 2);
+          const firstRow = elements["review-body"].children[0];
+          const secondRow = elements["review-body"].children[1];
+          assert.strictEqual(firstRow.children[0].children[0].checked, true);
+          assert.strictEqual(firstRow.children[1].children[0].value, "2026-03-31");
+          assert.strictEqual(firstRow.children[2].children[0].value, "new");
+          assert.strictEqual(firstRow.children[3].children[0].value, "2.00");
+          assert.strictEqual(secondRow.children[2].children[0].value, "skip");
           assert.strictEqual(elements["save-button"].disabled, false);
           assert.strictEqual(elements["extract-button"].disabled, false);
           assert.strictEqual(elements["ocr-lines-panel"].hidden, false);
@@ -350,7 +363,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
           assert.strictEqual(elements["preview-image"].src, "data:clipboard");
 
-          const inputPasteEvent = pasteTextIntoInput(elements["date-input"]);
+          const inputPasteEvent = pasteTextIntoInput(firstRow.children[1].children[0]);
           assert.strictEqual(inputPasteEvent.defaultPrevented, false);
           assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
           assert.strictEqual(elements["preview-image"].src, "data:clipboard");
@@ -361,21 +374,32 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
           extractHandler();
           const thirdPendingExtract = pendingExtractResponses.shift();
-          thirdPendingExtract(
-            {
-              ok: true,
-              json: async () => ({
-                row: { date: "", merchant_item: "", amount: "" },
-                lines: ["OCR returned no usable fields."],
-                warning: "OCR returned no usable fields.",
-              }),
-            }
-          );
+          thirdPendingExtract(makeResponse([], ["OCR returned no usable fields."], "OCR returned no usable fields."));
           await flush();
 
           assert.strictEqual(elements["status-message"].textContent, "OCR returned no usable fields.");
           assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
-          assert.strictEqual(elements["save-button"].disabled, false);
+          assert.strictEqual(elements["save-button"].disabled, true);
+
+          extractHandler();
+          const fourthPendingExtract = pendingExtractResponses.shift();
+          fourthPendingExtract(makeResponse([{ date: "04-02", merchant_item: "save-me", amount: "6.00" }], ["04-02", "save-me", "6.00"]));
+          await flush();
+
+          const savedRow = elements["review-body"].children[0];
+          savedRow.children[1].children[0].value = "04-03";
+          savedRow.children[0].children[0].checked = true;
+          elements["save-button"].listeners.click();
+          const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
+          assert.deepStrictEqual(JSON.parse(saveCall.options.body), {
+            rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00", selected: true }],
+          });
+          pendingSaveResponses.shift()({
+            ok: true,
+            json: async () => ({ rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00" }] }),
+          });
+          await flush();
+          assert.strictEqual(elements["status-message"].textContent, "Rows saved to Excel.");
         }
 
         main().catch((error) => {
@@ -404,8 +428,11 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
             disabled: false,
             hidden: false,
             value: "",
+            checked: false,
             textContent: "",
             innerHTML: "",
+            className: "",
+            type: "",
             src: "",
             style: {},
             listeners: {},
@@ -422,6 +449,9 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
                 this.children.splice(index, 1);
               }
               return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
             },
             removeAttribute(name) {
               if (name === "src") {
@@ -441,10 +471,8 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
-          "expense-form": makeElement("expense-form"),
-          "date-input": makeElement("date-input"),
-          "merchant-input": makeElement("merchant-input"),
-          "amount-input": makeElement("amount-input"),
+          "review-table": makeElement("review-table"),
+          "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
         elements["preview-image"].hidden = true;
@@ -482,19 +510,15 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
             throw new Error(`Unexpected fetch: ${url}`);
           },
           document: {
+            addEventListener() {},
             getElementById(id) {
               return elements[id];
             },
             createElement(tag) {
-              return {
-                tagName: String(tag).toUpperCase(),
-                textContent: "",
-                colSpan: 0,
-                children: [],
-                appendChild(child) {
-                  this.children.push(child);
-                },
-              };
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
             },
           },
         };
@@ -528,17 +552,18 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               pendingExtractResponses.shift()({
                 ok: true,
                 json: async () => ({
-                  row: { date: "2026-03-30", merchant_item: "Shop", amount: "12.00" },
+                  rows: [{ date: "2026-03-30", merchant_item: "Shop", amount: "12.00" }],
                   lines: ["2026-03-30", "Shop", "12.00"],
                 }),
               });
               await flush();
 
-              elements["date-input"].value = "2026-03-30";
-              elements["merchant-input"].value = "Shop";
-              elements["amount-input"].value = "12.00";
+              const reviewRow = elements["review-body"].children[0];
+              reviewRow.children[1].children[0].value = "2026-03-30";
+              reviewRow.children[2].children[0].value = "Shop";
+              reviewRow.children[3].children[0].value = "12.00";
 
-              elements["expense-form"].listeners.submit({ preventDefault() {} });
+              elements["save-button"].listeners.click();
               pendingSaveResponses.shift()({
                 ok: false,
                 json: async () => ({ error: "Save failed from API." }),

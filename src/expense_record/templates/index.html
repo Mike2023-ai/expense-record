@@ -13,7 +13,7 @@
         <h1>Expense Screenshot Tool</h1>
         <p class="app-version">Version {{ app_version }}</p>
         <p class="hero-copy">
-          Paste a screenshot anywhere on the page or upload one, review the extracted row, then save it into Excel.
+          Paste a screenshot anywhere on the page or upload one, review the extracted rows, then save them into Excel.
         </p>
       </header>
 
@@ -50,27 +50,27 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>2. Review row</h2>
-          <p>Adjust the extracted values before saving.</p>
+          <h2>2. Review rows</h2>
+          <p>Adjust the extracted values, uncheck any row you do not want, then save the selected rows.</p>
         </div>
 
-        <form id="expense-form" class="expense-form">
-          <label>
-            <span>Date</span>
-            <input id="date-input" name="date" type="text" placeholder="MM-DD" autocomplete="off">
-          </label>
-          <label>
-            <span>Merchant / Item</span>
-            <input id="merchant-input" name="merchant_item" type="text" placeholder="Merchant or description" autocomplete="off">
-          </label>
-          <label>
-            <span>Amount</span>
-            <input id="amount-input" name="amount" type="text" placeholder="0.00" autocomplete="off">
-          </label>
-          <div class="form-actions">
-            <button id="save-button" type="submit" disabled>Save to Excel</button>
-          </div>
-        </form>
+        <div class="table-wrap">
+          <table id="review-table" class="review-table">
+            <thead>
+              <tr>
+                <th>Use</th>
+                <th>Date</th>
+                <th>Merchant / Item</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody id="review-body"></tbody>
+          </table>
+        </div>
+
+        <div class="form-actions">
+          <button id="save-button" type="button" disabled>Save to Excel</button>
+        </div>
       </section>
 
       <section class="panel">

@@ -238,27 +238,42 @@ input[type="file"] {
   color: var(--muted);
 }
 
-.expense-form {
-  display: grid;
-  gap: 14px;
-}
-
-.expense-form label {
-  display: grid;
-  gap: 8px;
-  font-weight: 600;
-}
-
-.expense-form input[type="text"] {
+.review-table {
   width: 100%;
-  padding: 13px 14px;
-  border-radius: 12px;
+  border-collapse: collapse;
+}
+
+.review-table th,
+.review-table td {
+  padding: 12px 10px;
+  text-align: left;
+  border-bottom: 1px solid rgba(220, 203, 187, 0.8);
+  vertical-align: middle;
+}
+
+.review-table th {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.review-table input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.review-table input[type="text"] {
+  width: 100%;
+  min-width: 120px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.92);
   color: var(--ink);
 }
 
-.expense-form input[type="text"]:focus {
+.review-table input[type="text"]:focus {
   outline: 3px solid rgba(160, 79, 23, 0.16);
   border-color: var(--accent);
 }
