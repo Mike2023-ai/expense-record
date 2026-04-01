@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date as date_type, datetime as datetime_type
 from pathlib import Path
 
@@ -16,9 +17,17 @@ class ExcelExpenseStorage:
         self.workbook_path = Path(workbook_path)
 
     def append_row(self, row: ExpenseRow) -> None:
+        self.append_rows((row,))
+
+    def append_rows(self, rows: Iterable[ExpenseRow]) -> None:
+        rows = list(rows)
+        if not rows:
+            return
+
         workbook = self._load_or_create_workbook()
         worksheet = self._get_expenses_sheet(workbook)
-        worksheet.append([row.date, row.merchant_item, row.amount])
+        for row in rows:
+            worksheet.append([row.date, row.merchant_item, row.amount])
         workbook.save(self.workbook_path)
 
     def list_rows(self) -> list[ExpenseRow]:

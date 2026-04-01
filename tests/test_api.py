@@ -706,8 +706,47 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "row": {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        "rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}],
         "lines": ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
+    }
+
+
+def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: [
+            "滴滴出行",
+            "3月28日11:44",
+            "-28.00",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "screen.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "rows": [
+            {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"},
+            {"date": "03-29", "merchant_item": "扫二维码付款-给早餐", "amount": "5.00"},
+        ],
+        "lines": [
+            "滴滴出行",
+            "3月28日11:44",
+            "-28.00",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ],
     }
 
 
@@ -738,7 +777,7 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "row": {"date": "", "merchant_item": "", "amount": ""},
+        "rows": [],
         "lines": ["微信支付", "订单已完成"],
         "warning": "OCR returned no usable fields.",
     }
@@ -763,11 +802,15 @@ def test_save_endpoint_rejects_completely_blank_rows_after_empty_ocr_warning(tmp
 
     save_response = client.post(
         "/api/save",
-        json={"date": "", "merchant_item": "", "amount": ""},
+        json={
+            "rows": [
+                {"date": "", "merchant_item": "", "amount": "", "selected": True},
+            ]
+        },
     )
 
     assert save_response.status_code == 400
-    assert save_response.get_json() == {"error": "At least one field is required."}
+    assert save_response.get_json() == {"error": "At least one selected row is required."}
 
 
 def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
@@ -789,18 +832,42 @@ def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
     assert response.get_json() == {"error": "OCR extraction failed."}
 
 
-def test_save_endpoint_persists_row(tmp_path):
+def test_save_endpoint_persists_selected_rows(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
 
     response = client.post(
         "/api/save",
-        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        json={
+            "rows": [
+                {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": True},
+            ]
+        },
     )
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
         {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+    ]
+
+
+def test_save_endpoint_appends_only_checked_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "rows": [
+                {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "selected": True},
+                {"date": "03-29", "merchant_item": "早餐", "amount": "5.00", "selected": False},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"}
     ]
 
 
@@ -810,7 +877,11 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"date": "", "merchant_item": "手动补录", "amount": ""},
+        json={
+            "rows": [
+                {"date": "", "merchant_item": "手动补录", "amount": "", "selected": True},
+            ]
+        },
     )
 
     assert response.status_code == 200
@@ -825,7 +896,11 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50"},
+        json={
+            "rows": [
+                {"date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50", "selected": True},
+            ]
+        },
     )
 
     assert response.status_code == 400
@@ -836,9 +911,11 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
     ("payload", "description"),
     [
         ({}, "empty payload"),
-        ({"date": "2026-03-30"}, "omitted fields"),
-        ({"date": None, "merchant_item": None, "amount": None}, "null fields"),
-        ({"date": " ", "merchant_item": "\t", "amount": "\n"}, "whitespace-only fields"),
+        ({"rows": None}, "null rows"),
+        ({"rows": {}}, "non-list rows"),
+        ({"rows": [{"date": "2026-03-30"}]}, "omitted fields"),
+        ({"rows": [{"date": None, "merchant_item": None, "amount": None, "selected": True}]}, "null fields"),
+        ({"rows": [{"date": " ", "merchant_item": "\t", "amount": "\n", "selected": True}]}, "whitespace-only fields"),
     ],
 )
 def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
@@ -857,7 +934,11 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
 
     client.post(
         "/api/save",
-        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        json={
+            "rows": [
+                {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": True},
+            ]
+        },
     )
 
     response = client.get("/api/rows")
