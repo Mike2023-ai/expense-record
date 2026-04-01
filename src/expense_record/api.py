@@ -78,11 +78,16 @@ def save_row():
 
     storage = _storage()
     rows_to_save: list[ExpenseRow] = []
+    selected_count = 0
     for row_payload in rows_payload:
         if not isinstance(row_payload, dict):
             return jsonify({"error": "Invalid save payload."}), 400
-        if not row_payload.get("selected", True):
+        selected = row_payload.get("selected", True)
+        if not isinstance(selected, bool):
+            return jsonify({"error": "Invalid save payload."}), 400
+        if not selected:
             continue
+        selected_count += 1
 
         date = _coerce_save_field(row_payload, "date")
         merchant_item = _coerce_save_field(row_payload, "merchant_item")
@@ -95,8 +100,10 @@ def save_row():
 
         rows_to_save.append(ExpenseRow(date=date, merchant_item=merchant_item, amount=amount))
 
-    if rows_to_save:
-        storage.append_rows(rows_to_save)
+    if selected_count == 0:
+        return jsonify({"error": "At least one selected row is required."}), 400
+
+    storage.append_rows(rows_to_save)
 
     rows = [item.to_dict() for item in storage.list_rows()]
     return jsonify({"rows": rows})

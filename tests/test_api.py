@@ -871,6 +871,23 @@ def test_save_endpoint_appends_only_checked_rows(tmp_path):
     ]
 
 
+def test_save_endpoint_rejects_when_no_rows_are_selected(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "rows": [
+                {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "selected": False},
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "At least one selected row is required."}
+
+
 def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -914,6 +931,7 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
         ({"rows": None}, "null rows"),
         ({"rows": {}}, "non-list rows"),
         ({"rows": [{"date": "2026-03-30"}]}, "omitted fields"),
+        ({"rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": "false"}]}, "non-boolean selected"),
         ({"rows": [{"date": None, "merchant_item": None, "amount": None, "selected": True}]}, "null fields"),
         ({"rows": [{"date": " ", "merchant_item": "\t", "amount": "\n", "selected": True}]}, "whitespace-only fields"),
     ],
