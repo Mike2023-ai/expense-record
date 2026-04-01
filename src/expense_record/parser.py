@@ -132,6 +132,15 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
                     current_group = pending_prefix
                     pending_prefix = []
                     has_transaction_content = False
+                elif (
+                    _group_contains_amount_line(current_group)
+                    and _amount_arrives_before_next_merchant(lines, index)
+                ):
+                    if current_group:
+                        groups.append(current_group)
+                    current_group = pending_prefix
+                    pending_prefix = []
+                    has_transaction_content = False
                 else:
                     current_group.extend(pending_prefix)
                     pending_prefix = []
@@ -332,6 +341,8 @@ def _pending_prefix_starts_new_transaction(
 ) -> bool:
     current_group_has_positive_amount = _group_contains_positive_amount_line(current_group)
     current_group_has_negative_amount = _group_contains_negative_amount_line(current_group)
+    current_group_has_date = _group_contains_date_or_time(current_group)
+    current_group_has_merchant = _group_contains_merchant_like_line(current_group)
     current_line_is_currency_amount = _looks_like_currency_amount_line(current_line)
     return any(
         (
@@ -353,6 +364,12 @@ def _pending_prefix_starts_new_transaction(
     ) or (
         current_group_has_negative_amount
         and current_line_is_currency_amount
+        and _pending_prefix_has_accepted_date(lines, current_line)
+    ) or (
+        current_group_has_date
+        and current_group_has_merchant
+        and not _group_contains_amount_line(current_group)
+        and _looks_like_amount_line(current_line)
         and _pending_prefix_has_accepted_date(lines, current_line)
     ) or any(_is_split_merchant_label_piece(lines, index) for index in range(len(lines)))
 
@@ -379,6 +396,10 @@ def _group_contains_amount_line(lines: list[str]) -> bool:
 
 def _group_contains_date_or_time(lines: list[str]) -> bool:
     return any(_looks_like_date_or_time(line) for line in lines)
+
+
+def _group_contains_merchant_like_line(lines: list[str]) -> bool:
+    return any(_looks_like_merchant_like_line(line) for line in lines)
 
 
 def _group_merchant_like_count(lines: list[str]) -> int:
