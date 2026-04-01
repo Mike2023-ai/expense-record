@@ -18,6 +18,24 @@ def test_excel_storage_creates_workbook_and_appends_rows(tmp_path):
     ]
 
 
+def test_storage_append_rows_appends_multiple_rows(tmp_path):
+    workbook_path = tmp_path / "expenses.xlsx"
+    storage = ExcelExpenseStorage(workbook_path)
+
+    storage.append_rows(
+        [
+            ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+            ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+        ]
+    )
+
+    assert workbook_path.exists()
+    assert storage.list_rows() == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
+
+
 def test_excel_storage_preserves_preexisting_rows_with_custom_header(tmp_path):
     workbook_path = tmp_path / "expenses.xlsx"
     workbook = Workbook()

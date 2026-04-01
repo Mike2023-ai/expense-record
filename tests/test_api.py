@@ -13,6 +13,7 @@ import pytest
 
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
+from expense_record.models import ExpenseRow
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -697,6 +698,10 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
         "expense_record.api.run_ocr_lines",
         lambda image_bytes: ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
     )
+    monkeypatch.setattr(
+        "expense_record.api.extract_expense_rows",
+        lambda lines: [ExpenseRow(date="2026-03-30", merchant_item="瑞幸咖啡", amount="23.50")],
+    )
 
     response = client.post(
         "/api/extract",
@@ -706,7 +711,7 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "row": {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        "rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}],
         "lines": ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
     }
 
@@ -729,6 +734,7 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
         "expense_record.api.run_ocr_lines",
         lambda _image_bytes: ["微信支付", "订单已完成"],
     )
+    monkeypatch.setattr("expense_record.api.extract_expense_rows", lambda _lines: [])
 
     response = client.post(
         "/api/extract",
@@ -738,36 +744,78 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "row": {"date": "", "merchant_item": "", "amount": ""},
+        "rows": [],
         "lines": ["微信支付", "订单已完成"],
         "warning": "OCR returned no usable fields.",
     }
 
 
-def test_save_endpoint_rejects_completely_blank_rows_after_empty_ocr_warning(tmp_path, monkeypatch):
+def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
 
     monkeypatch.setattr(
         "expense_record.api.run_ocr_lines",
-        lambda _image_bytes: ["微信支付", "订单已完成"],
+        lambda _image_bytes: ["2026-03-30 18:21", "瑞幸咖啡", "2026-03-31 09:15", "星巴克"],
+    )
+    monkeypatch.setattr(
+        "expense_record.api.extract_expense_rows",
+        lambda _lines: [
+            ExpenseRow(date="2026-03-30", merchant_item="瑞幸咖啡", amount="23.50"),
+            ExpenseRow(date="2026-03-31", merchant_item="星巴克", amount=""),
+        ],
     )
 
-    extract_response = client.post(
+    response = client.post(
         "/api/extract",
         data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
         content_type="multipart/form-data",
     )
-    assert extract_response.status_code == 200
-    assert extract_response.get_json()["warning"] == "OCR returned no usable fields."
 
-    save_response = client.post(
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "rows": [
+            {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+            {"date": "2026-03-31", "merchant_item": "星巴克", "amount": ""},
+        ],
+        "lines": ["2026-03-30 18:21", "瑞幸咖啡", "2026-03-31 09:15", "星巴克"],
+        "warning": "OCR returned incomplete fields.",
+    }
+
+
+def test_save_endpoint_appends_only_checked_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
         "/api/save",
-        json={"date": "", "merchant_item": "", "amount": ""},
+        json={
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-03-30",
+                    "merchant_item": "瑞幸咖啡",
+                    "amount": "23.50",
+                },
+                {
+                    "selected": False,
+                    "date": "2026-03-31",
+                    "merchant_item": "星巴克",
+                    "amount": "19.00",
+                },
+            ]
+        },
     )
 
-    assert save_response.status_code == 400
-    assert save_response.get_json() == {"error": "At least one field is required."}
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+    ]
+
+    rows_response = client.get("/api/rows")
+    assert rows_response.get_json()["rows"] == [
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+    ]
 
 
 def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
@@ -795,7 +843,16 @@ def test_save_endpoint_persists_row(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        json={
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-03-30",
+                    "merchant_item": "瑞幸咖啡",
+                    "amount": "23.50",
+                }
+            ]
+        },
     )
 
     assert response.status_code == 200
@@ -810,7 +867,16 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"date": "", "merchant_item": "手动补录", "amount": ""},
+        json={
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "",
+                    "merchant_item": "手动补录",
+                    "amount": "",
+                }
+            ]
+        },
     )
 
     assert response.status_code == 200
@@ -825,7 +891,7 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50"},
+        json={"rows": [{"selected": True, "date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50"}]},
     )
 
     assert response.status_code == 400
@@ -836,9 +902,10 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
     ("payload", "description"),
     [
         ({}, "empty payload"),
-        ({"date": "2026-03-30"}, "omitted fields"),
-        ({"date": None, "merchant_item": None, "amount": None}, "null fields"),
-        ({"date": " ", "merchant_item": "\t", "amount": "\n"}, "whitespace-only fields"),
+        ({"rows": []}, "empty rows"),
+        ({"rows": [{"selected": True, "date": "2026-03-30"}]}, "omitted fields"),
+        ({"rows": [{"selected": True, "date": None, "merchant_item": None, "amount": None}]}, "null fields"),
+        ({"rows": [{"selected": True, "date": " ", "merchant_item": "\t", "amount": "\n"}]}, "whitespace-only fields"),
     ],
 )
 def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
@@ -857,7 +924,16 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
 
     client.post(
         "/api/save",
-        json={"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
+        json={
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-03-30",
+                    "merchant_item": "瑞幸咖啡",
+                    "amount": "23.50",
+                }
+            ]
+        },
     )
 
     response = client.get("/api/rows")
