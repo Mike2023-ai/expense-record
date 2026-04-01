@@ -271,6 +271,14 @@ def test_extract_expense_rows_returns_single_row_through_new_entrypoint():
     ]
 
 
+def test_extract_expense_rows_keeps_date_only_row_for_manual_completion():
+    rows = extract_expense_rows(["3月29日08:42"])
+
+    assert rows == [
+        ExpenseRow(date="03-29", merchant_item="", amount="")
+    ]
+
+
 def test_extract_expense_rows_ignores_trailing_payment_noise_without_creating_new_row():
     rows = extract_expense_rows(
         [

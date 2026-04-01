@@ -86,13 +86,12 @@ def parse_expense_row(text_lines: str | Iterable[str]) -> ExpenseRow:
 
 def extract_expense_rows(text_lines: str | Iterable[str]) -> list[ExpenseRow]:
     lines = _normalize_lines(text_lines)
-    return [
-        row
-        for row in (
-            parse_expense_row(group) for group in _group_expense_lines(lines)
-        )
-        if row.merchant_item or row.amount
-    ]
+    rows: list[ExpenseRow] = []
+    for group in _group_expense_lines(lines):
+        row = parse_expense_row(group)
+        if row.merchant_item or row.amount or _group_is_standalone_date_row(group, row):
+            rows.append(row)
+    return rows
 
 
 def _normalize_lines(text_lines: str | Iterable[str]) -> list[str]:
@@ -405,6 +404,10 @@ def _group_contains_amount_line(lines: list[str]) -> bool:
 
 def _group_contains_date_or_time(lines: list[str]) -> bool:
     return any(_looks_like_date_or_time(line) for line in lines)
+
+
+def _group_is_standalone_date_row(lines: list[str], row: ExpenseRow) -> bool:
+    return bool(row.date) and len(lines) == 1 and _looks_like_date_or_time(lines[0])
 
 
 def _group_contains_merchant_like_line(lines: list[str]) -> bool:

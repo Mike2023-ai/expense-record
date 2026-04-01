@@ -133,7 +133,7 @@ function renderPreview(file, selectionToken) {
 }
 
 function clearRows() {
-  elements.recordsBody.innerHTML = "";
+  clearChildren(elements.recordsBody);
 }
 
 function renderRows(rows) {
@@ -217,7 +217,7 @@ async function extractRows() {
 }
 
 function collectReviewRows() {
-  return elements.reviewBody.children.map((row) => ({
+  return Array.from(elements.reviewBody.children).map((row) => ({
     selected: Boolean(row.children[0].children[0].checked),
     date: row.children[1].children[0].value.trim(),
     merchant_item: row.children[2].children[0].value.trim(),
@@ -252,6 +252,8 @@ async function saveRows() {
     }
 
     renderRows(Array.isArray(data.rows) ? data.rows : []);
+    clearReviewState();
+    extractedSelectionToken = 0;
     setStatus("Rows saved to Excel.");
   } catch (_error) {
     if (selectionToken !== activeSelectionToken) {

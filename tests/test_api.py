@@ -400,6 +400,8 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           });
           await flush();
           assert.strictEqual(elements["status-message"].textContent, "Rows saved to Excel.");
+          assert.strictEqual(elements["review-body"].children.length, 0);
+          assert.strictEqual(elements["save-button"].disabled, true);
         }
 
         main().catch((error) => {
@@ -571,6 +573,7 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               await flush();
               assert.strictEqual(elements["status-message"].textContent, "Save failed from API.");
               assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+              assert.strictEqual(elements["save-button"].disabled, false);
 
               rejectNextExtract = true;
               elements["extract-button"].listeners.click();
@@ -772,6 +775,29 @@ def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
             "3月29日08:42",
             "-5.00",
         ],
+    }
+
+
+def test_extract_endpoint_keeps_date_only_row_for_manual_completion(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: ["3月29日08:42"],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "screen.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "rows": [{"date": "03-29", "merchant_item": "", "amount": ""}],
+        "lines": ["3月29日08:42"],
+        "warning": "OCR returned incomplete fields.",
     }
 
 
