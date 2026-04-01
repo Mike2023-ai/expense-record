@@ -13,7 +13,6 @@ import pytest
 
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
-from expense_record.models import ExpenseRow
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -21,24 +20,26 @@ from packaging.utils import canonicalize_name
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_index_page_contains_review_form_container():
+def test_index_page_contains_review_table_container():
     app = create_app({"TESTING": True})
     client = app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'id="expense-form"' in response.data
+    assert b'id="review-table"' in response.data
+    assert b'id="review-body"' in response.data
 
 
-def test_index_page_uses_month_day_date_placeholder():
+def test_index_page_uses_review_table_columns():
     app = create_app({"TESTING": True})
     client = app.test_client()
 
     response = client.get("/")
 
     assert response.status_code == 200
-    assert b'placeholder="MM-DD"' in response.data
+    assert b"Use" in response.data
+    assert b"Merchant / Item" in response.data
 
 
 def test_index_page_contains_ocr_lines_debug_panel():
@@ -90,8 +91,11 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             disabled: false,
             hidden: false,
             value: "",
+            checked: false,
             textContent: "",
             innerHTML: "",
+            className: "",
+            type: "",
             src: "",
             style: {},
             files: [],
@@ -109,6 +113,9 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
                 this.children.splice(index, 1);
               }
               return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
             },
             removeAttribute(name) {
               if (name === "src") {
@@ -128,16 +135,11 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           "status-message": makeElement("status-message"),
           "ocr-lines-panel": makeElement("ocr-lines-panel"),
           "ocr-lines-list": makeElement("ocr-lines-list"),
-          "expense-form": makeElement("expense-form"),
-          "date-input": makeElement("date-input"),
-          "merchant-input": makeElement("merchant-input"),
-          "amount-input": makeElement("amount-input"),
+          "review-table": makeElement("review-table"),
+          "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
         elements["preview-image"].hidden = true;
-        elements["date-input"].tagName = "INPUT";
-        elements["merchant-input"].tagName = "INPUT";
-        elements["amount-input"].tagName = "INPUT";
         const documentListeners = {};
 
         const fileReaderInstances = [];
@@ -166,12 +168,17 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         }
 
         const pendingExtractResponses = [];
+        const pendingSaveResponses = [];
         const fetchCalls = [];
 
-        function makeResponse(row, lines = []) {
+        function makeResponse(rows, lines = [], warning = "") {
+          const payload = { rows, lines };
+          if (warning) {
+            payload.warning = warning;
+          }
           return {
             ok: true,
-            json: async () => ({ row, lines }),
+            json: async () => payload,
           };
         }
 
@@ -194,7 +201,9 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
               });
             }
             if (url === "/api/save") {
-              return { ok: true, json: async () => ({ rows: [] }) };
+              return await new Promise((resolve) => {
+                pendingSaveResponses.push(resolve);
+              });
             }
             throw new Error(`Unexpected fetch: ${url}`);
           },
@@ -206,15 +215,10 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
               return elements[id];
             },
             createElement(tag) {
-              return {
-                tagName: String(tag).toUpperCase(),
-                textContent: "",
-                colSpan: 0,
-                children: [],
-                appendChild(child) {
-                  this.children.push(child);
-                },
-              };
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
             },
           },
         };
@@ -291,7 +295,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         async function main() {
           selectScreenshot("first.png");
           assert.strictEqual(elements["preview-caption"].textContent, "first.png");
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
           assert.strictEqual(fileReaderInstances.length, 1);
 
@@ -303,22 +307,25 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
           assert.strictEqual(elements["preview-image"].src, "");
           assert.strictEqual(elements["preview-caption"].textContent, "second.png");
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
 
           assert.strictEqual(fileReaderInstances.length, 2);
 
           const firstPendingExtract = pendingExtractResponses.shift();
-          firstPendingExtract(makeResponse({ date: "2026-03-30", merchant_item: "old", amount: "1.00" }));
+          firstPendingExtract(makeResponse([{ date: "2026-03-30", merchant_item: "old", amount: "1.00" }]));
           await flush();
-          assert.strictEqual(elements["date-input"].value, "");
+          assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
 
           extractHandler();
           const secondPendingExtract = pendingExtractResponses.shift();
           secondPendingExtract(
             makeResponse(
-              { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
+              [
+                { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
+                { date: "2026-04-01", merchant_item: "skip", amount: "3.00" },
+              ],
               ["2026-03-31", "new", "2.00"]
             )
           );
@@ -329,9 +336,14 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
 
           assert.strictEqual(elements["preview-image"].src, "data:second");
-          assert.strictEqual(elements["date-input"].value, "2026-03-31");
-          assert.strictEqual(elements["merchant-input"].value, "new");
-          assert.strictEqual(elements["amount-input"].value, "2.00");
+          assert.strictEqual(elements["review-body"].children.length, 2);
+          const firstRow = elements["review-body"].children[0];
+          const secondRow = elements["review-body"].children[1];
+          assert.strictEqual(firstRow.children[0].children[0].checked, true);
+          assert.strictEqual(firstRow.children[1].children[0].value, "2026-03-31");
+          assert.strictEqual(firstRow.children[2].children[0].value, "new");
+          assert.strictEqual(firstRow.children[3].children[0].value, "2.00");
+          assert.strictEqual(secondRow.children[2].children[0].value, "skip");
           assert.strictEqual(elements["save-button"].disabled, false);
           assert.strictEqual(elements["extract-button"].disabled, false);
           assert.strictEqual(elements["ocr-lines-panel"].hidden, false);
@@ -351,7 +363,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           await flush();
           assert.strictEqual(elements["preview-image"].src, "data:clipboard");
 
-          const inputPasteEvent = pasteTextIntoInput(elements["date-input"]);
+          const inputPasteEvent = pasteTextIntoInput(firstRow.children[1].children[0]);
           assert.strictEqual(inputPasteEvent.defaultPrevented, false);
           assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
           assert.strictEqual(elements["preview-image"].src, "data:clipboard");
@@ -362,21 +374,34 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
           extractHandler();
           const thirdPendingExtract = pendingExtractResponses.shift();
-          thirdPendingExtract(
-            {
-              ok: true,
-              json: async () => ({
-                row: { date: "", merchant_item: "", amount: "" },
-                lines: ["OCR returned no usable fields."],
-                warning: "OCR returned no usable fields.",
-              }),
-            }
-          );
+          thirdPendingExtract(makeResponse([], ["OCR returned no usable fields."], "OCR returned no usable fields."));
           await flush();
 
           assert.strictEqual(elements["status-message"].textContent, "OCR returned no usable fields.");
           assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
-          assert.strictEqual(elements["save-button"].disabled, false);
+          assert.strictEqual(elements["save-button"].disabled, true);
+
+          extractHandler();
+          const fourthPendingExtract = pendingExtractResponses.shift();
+          fourthPendingExtract(makeResponse([{ date: "04-02", merchant_item: "save-me", amount: "6.00" }], ["04-02", "save-me", "6.00"]));
+          await flush();
+
+          const savedRow = elements["review-body"].children[0];
+          savedRow.children[1].children[0].value = "04-03";
+          savedRow.children[0].children[0].checked = true;
+          elements["save-button"].listeners.click();
+          const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
+          assert.deepStrictEqual(JSON.parse(saveCall.options.body), {
+            rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00", selected: true }],
+          });
+          pendingSaveResponses.shift()({
+            ok: true,
+            json: async () => ({ rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00" }] }),
+          });
+          await flush();
+          assert.strictEqual(elements["status-message"].textContent, "Rows saved to Excel.");
+          assert.strictEqual(elements["review-body"].children.length, 0);
+          assert.strictEqual(elements["save-button"].disabled, true);
         }
 
         main().catch((error) => {
@@ -405,8 +430,11 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
             disabled: false,
             hidden: false,
             value: "",
+            checked: false,
             textContent: "",
             innerHTML: "",
+            className: "",
+            type: "",
             src: "",
             style: {},
             listeners: {},
@@ -423,6 +451,9 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
                 this.children.splice(index, 1);
               }
               return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
             },
             removeAttribute(name) {
               if (name === "src") {
@@ -442,10 +473,8 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
-          "expense-form": makeElement("expense-form"),
-          "date-input": makeElement("date-input"),
-          "merchant-input": makeElement("merchant-input"),
-          "amount-input": makeElement("amount-input"),
+          "review-table": makeElement("review-table"),
+          "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
         elements["preview-image"].hidden = true;
@@ -483,19 +512,15 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
             throw new Error(`Unexpected fetch: ${url}`);
           },
           document: {
+            addEventListener() {},
             getElementById(id) {
               return elements[id];
             },
             createElement(tag) {
-              return {
-                tagName: String(tag).toUpperCase(),
-                textContent: "",
-                colSpan: 0,
-                children: [],
-                appendChild(child) {
-                  this.children.push(child);
-                },
-              };
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
             },
           },
         };
@@ -529,17 +554,18 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               pendingExtractResponses.shift()({
                 ok: true,
                 json: async () => ({
-                  row: { date: "2026-03-30", merchant_item: "Shop", amount: "12.00" },
+                  rows: [{ date: "2026-03-30", merchant_item: "Shop", amount: "12.00" }],
                   lines: ["2026-03-30", "Shop", "12.00"],
                 }),
               });
               await flush();
 
-              elements["date-input"].value = "2026-03-30";
-              elements["merchant-input"].value = "Shop";
-              elements["amount-input"].value = "12.00";
+              const reviewRow = elements["review-body"].children[0];
+              reviewRow.children[1].children[0].value = "2026-03-30";
+              reviewRow.children[2].children[0].value = "Shop";
+              reviewRow.children[3].children[0].value = "12.00";
 
-              elements["expense-form"].listeners.submit({ preventDefault() {} });
+              elements["save-button"].listeners.click();
               pendingSaveResponses.shift()({
                 ok: false,
                 json: async () => ({ error: "Save failed from API." }),
@@ -547,6 +573,7 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
               await flush();
               assert.strictEqual(elements["status-message"].textContent, "Save failed from API.");
               assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+              assert.strictEqual(elements["save-button"].disabled, false);
 
               rejectNextExtract = true;
               elements["extract-button"].listeners.click();
@@ -698,10 +725,6 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
         "expense_record.api.run_ocr_lines",
         lambda image_bytes: ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
     )
-    monkeypatch.setattr(
-        "expense_record.api.extract_expense_rows",
-        lambda lines: [ExpenseRow(date="2026-03-30", merchant_item="瑞幸咖啡", amount="23.50")],
-    )
 
     response = client.post(
         "/api/extract",
@@ -713,6 +736,68 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
     assert response.get_json() == {
         "rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}],
         "lines": ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
+    }
+
+
+def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: [
+            "滴滴出行",
+            "3月28日11:44",
+            "-28.00",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "screen.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "rows": [
+            {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"},
+            {"date": "03-29", "merchant_item": "扫二维码付款-给早餐", "amount": "5.00"},
+        ],
+        "lines": [
+            "滴滴出行",
+            "3月28日11:44",
+            "-28.00",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ],
+    }
+
+
+def test_extract_endpoint_keeps_date_only_row_for_manual_completion(tmp_path, monkeypatch):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "expense_record.api.run_ocr_lines",
+        lambda _image_bytes: ["3月29日08:42"],
+    )
+
+    response = client.post(
+        "/api/extract",
+        data={"image": (io.BytesIO(b"fake image bytes"), "screen.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "rows": [{"date": "03-29", "merchant_item": "", "amount": ""}],
+        "lines": ["3月29日08:42"],
+        "warning": "OCR returned incomplete fields.",
     }
 
 
@@ -734,7 +819,6 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
         "expense_record.api.run_ocr_lines",
         lambda _image_bytes: ["微信支付", "订单已完成"],
     )
-    monkeypatch.setattr("expense_record.api.extract_expense_rows", lambda _lines: [])
 
     response = client.post(
         "/api/extract",
@@ -750,72 +834,34 @@ def test_extract_endpoint_returns_warning_when_ocr_has_no_usable_fields(tmp_path
     }
 
 
-def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
+def test_save_endpoint_rejects_completely_blank_rows_after_empty_ocr_warning(tmp_path, monkeypatch):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
 
     monkeypatch.setattr(
         "expense_record.api.run_ocr_lines",
-        lambda _image_bytes: ["2026-03-30 18:21", "瑞幸咖啡", "2026-03-31 09:15", "星巴克"],
-    )
-    monkeypatch.setattr(
-        "expense_record.api.extract_expense_rows",
-        lambda _lines: [
-            ExpenseRow(date="2026-03-30", merchant_item="瑞幸咖啡", amount="23.50"),
-            ExpenseRow(date="2026-03-31", merchant_item="星巴克", amount=""),
-        ],
+        lambda _image_bytes: ["微信支付", "订单已完成"],
     )
 
-    response = client.post(
+    extract_response = client.post(
         "/api/extract",
         data={"image": (io.BytesIO(b"fake image bytes"), "receipt.png")},
         content_type="multipart/form-data",
     )
+    assert extract_response.status_code == 200
+    assert extract_response.get_json()["warning"] == "OCR returned no usable fields."
 
-    assert response.status_code == 200
-    assert response.get_json() == {
-        "rows": [
-            {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"},
-            {"date": "2026-03-31", "merchant_item": "星巴克", "amount": ""},
-        ],
-        "lines": ["2026-03-30 18:21", "瑞幸咖啡", "2026-03-31 09:15", "星巴克"],
-        "warning": "OCR returned incomplete fields.",
-    }
-
-
-def test_save_endpoint_appends_only_checked_rows(tmp_path):
-    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
-    client = app.test_client()
-
-    response = client.post(
+    save_response = client.post(
         "/api/save",
         json={
             "rows": [
-                {
-                    "selected": True,
-                    "date": "2026-03-30",
-                    "merchant_item": "瑞幸咖啡",
-                    "amount": "23.50",
-                },
-                {
-                    "selected": False,
-                    "date": "2026-03-31",
-                    "merchant_item": "星巴克",
-                    "amount": "19.00",
-                },
+                {"date": "", "merchant_item": "", "amount": "", "selected": True},
             ]
         },
     )
 
-    assert response.status_code == 200
-    assert response.get_json()["rows"] == [
-        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
-    ]
-
-    rows_response = client.get("/api/rows")
-    assert rows_response.get_json()["rows"] == [
-        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
-    ]
+    assert save_response.status_code == 400
+    assert save_response.get_json() == {"error": "At least one selected row is required."}
 
 
 def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
@@ -837,7 +883,7 @@ def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
     assert response.get_json() == {"error": "OCR extraction failed."}
 
 
-def test_save_endpoint_persists_row(tmp_path):
+def test_save_endpoint_persists_selected_rows(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
 
@@ -845,12 +891,7 @@ def test_save_endpoint_persists_row(tmp_path):
         "/api/save",
         json={
             "rows": [
-                {
-                    "selected": True,
-                    "date": "2026-03-30",
-                    "merchant_item": "瑞幸咖啡",
-                    "amount": "23.50",
-                }
+                {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": True},
             ]
         },
     )
@@ -861,6 +902,43 @@ def test_save_endpoint_persists_row(tmp_path):
     ]
 
 
+def test_save_endpoint_appends_only_checked_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "rows": [
+                {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "selected": True},
+                {"date": "03-29", "merchant_item": "早餐", "amount": "5.00", "selected": False},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"}
+    ]
+
+
+def test_save_endpoint_rejects_when_no_rows_are_selected(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "rows": [
+                {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "selected": False},
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "At least one selected row is required."}
+
+
 def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -869,12 +947,7 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
         "/api/save",
         json={
             "rows": [
-                {
-                    "selected": True,
-                    "date": "",
-                    "merchant_item": "手动补录",
-                    "amount": "",
-                }
+                {"date": "", "merchant_item": "手动补录", "amount": "", "selected": True},
             ]
         },
     )
@@ -891,7 +964,11 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
 
     response = client.post(
         "/api/save",
-        json={"rows": [{"selected": True, "date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50"}]},
+        json={
+            "rows": [
+                {"date": ["2026-03-30"], "merchant_item": {"name": "瑞幸咖啡"}, "amount": "23.50", "selected": True},
+            ]
+        },
     )
 
     assert response.status_code == 400
@@ -902,10 +979,12 @@ def test_save_endpoint_rejects_malformed_payload(tmp_path):
     ("payload", "description"),
     [
         ({}, "empty payload"),
-        ({"rows": []}, "empty rows"),
-        ({"rows": [{"selected": True, "date": "2026-03-30"}]}, "omitted fields"),
-        ({"rows": [{"selected": True, "date": None, "merchant_item": None, "amount": None}]}, "null fields"),
-        ({"rows": [{"selected": True, "date": " ", "merchant_item": "\t", "amount": "\n"}]}, "whitespace-only fields"),
+        ({"rows": None}, "null rows"),
+        ({"rows": {}}, "non-list rows"),
+        ({"rows": [{"date": "2026-03-30"}]}, "omitted fields"),
+        ({"rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": "false"}]}, "non-boolean selected"),
+        ({"rows": [{"date": None, "merchant_item": None, "amount": None, "selected": True}]}, "null fields"),
+        ({"rows": [{"date": " ", "merchant_item": "\t", "amount": "\n", "selected": True}]}, "whitespace-only fields"),
     ],
 )
 def test_save_endpoint_rejects_missing_required_fields(tmp_path, payload, description):
@@ -926,12 +1005,7 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
         "/api/save",
         json={
             "rows": [
-                {
-                    "selected": True,
-                    "date": "2026-03-30",
-                    "merchant_item": "瑞幸咖啡",
-                    "amount": "23.50",
-                }
+                {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "selected": True},
             ]
         },
     )

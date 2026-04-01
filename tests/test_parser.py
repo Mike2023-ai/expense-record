@@ -1,9 +1,10 @@
+import pytest
 from datetime import date
 from datetime import date as real_date
 
 from expense_record.models import ExpenseRow
 import expense_record.parser as parser_module
-from expense_record.parser import parse_expense_row
+from expense_record.parser import extract_expense_rows, parse_expense_row
 
 
 class FixedDate(real_date):
@@ -226,6 +227,19 @@ def test_parse_expense_row_supports_slash_month_day_date_with_time():
     assert row.date == "03-29"
 
 
+@pytest.mark.parametrize("date_text", ["3/30", "3.30"])
+def test_parse_expense_row_supports_separator_month_day_date_without_time(date_text):
+    row = parse_expense_row(
+        [
+            date_text,
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert row.date == "03-30"
+
+
 def test_parse_expense_row_supports_realistic_month_day_row():
     row = parse_expense_row(
         [
@@ -240,6 +254,495 @@ def test_parse_expense_row_supports_realistic_month_day_row():
         merchant_item="扫二维码付款-给早餐",
         amount="5.00",
     )
+
+
+def test_extract_expense_rows_returns_single_row_through_new_entrypoint():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
+def test_extract_expense_rows_keeps_date_only_row_for_manual_completion():
+    rows = extract_expense_rows(["3月29日08:42"])
+
+    assert rows == [
+        ExpenseRow(date="03-29", merchant_item="", amount="")
+    ]
+
+
+def test_extract_expense_rows_ignores_trailing_payment_noise_without_creating_new_row():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "微信支付",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
+def test_extract_expense_rows_keeps_two_description_lines_in_one_transaction():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "美式咖啡",
+            "￥32.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
+def test_extract_expense_rows_groups_multiple_transactions_and_drops_blank_rows():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "支付宝",
+            "2026-03-30 09:15",
+            "便利店",
+            "￥8.50",
+            "微信支付",
+            "支付成功",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_merchantless_follow_up_separate():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "支付宝",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_date_only_prefix_merchantless_follow_up_separate():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_amount", ["8.50", "-8.50"])
+def test_extract_expense_rows_splits_accepted_date_follow_up_with_bare_amount(
+    follow_up_amount,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "2026-03-30 09:15",
+            follow_up_amount,
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_date_only_follow_up_after_dateless_amount_row():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_date_only_follow_up_after_negative_dateless_amount_row():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_dateless_amount_row_before_follow_up_date_merchant_amount():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "2026-03-30 09:15",
+            "便利店",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_dateless_amount_row_before_payment_noise_merchant_amount():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "微信支付",
+            "便利店",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="", merchant_item="便利店", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_date", ["3月30日", "3月30日09:15"])
+def test_extract_expense_rows_splits_month_day_follow_up_after_negative_dateless_amount_row_with_merchant(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-30", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_date", ["3/30", "3.30"])
+def test_extract_expense_rows_splits_separator_date_only_follow_up_after_negative_dateless_amount_row(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "follow_up_date",
+    ["3月30日", "3月30日09:15", "3月30日 09:15", "3/30 09:15", "3.30 09:15"],
+)
+def test_extract_expense_rows_splits_month_day_follow_up_after_negative_dateless_amount_row(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+@pytest.mark.parametrize("follow_up_date", ["11/12"])
+def test_extract_expense_rows_keeps_ambiguous_separator_follow_up_with_negative_dateless_amount_row(
+    follow_up_date,
+):
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            follow_up_date,
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_invalid_chinese_month_day_follow_up_with_negative_dateless_amount_row(
+    monkeypatch,
+):
+    monkeypatch.setattr(parser_module, "date", FixedDate)
+
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "2月29日",
+            "星巴克咖啡",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_ambiguous_separator_follow_up_with_positive_amount_in_same_row():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2025-01-01 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "11/12",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2025-01-01", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_invalid_chinese_month_day_follow_up_with_positive_amount_in_same_row(
+    monkeypatch,
+):
+    monkeypatch.setattr(parser_module, "date", FixedDate)
+
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2025-01-01 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "2月29日",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2025-01-01", merchant_item="星巴克咖啡", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_split_merchant_label_follow_up_separate():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "￥32.00",
+            "商户",
+            "名称",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_keeps_multiple_amount_lines_in_one_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "31.00",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(
+            date="03-29",
+            merchant_item="扫二维码付款-给早餐",
+            amount="5.00",
+        ),
+    ]
+
+
+def test_extract_expense_rows_keeps_description_line_with_negative_amount_before_next_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "优惠券",
+            "3月28日11:44",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(
+            date="03-29",
+            merchant_item="扫二维码付款-给早餐",
+            amount="5.00",
+        ),
+    ]
+
+
+def test_extract_expense_rows_keeps_date_then_description_in_one_negative_amount_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "优惠券",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+    ]
+
+
+def test_extract_expense_rows_keeps_negative_amount_date_description_before_next_transaction():
+    rows = extract_expense_rows(
+        [
+            "滴滴出行",
+            "-28.00",
+            "3月28日11:44",
+            "优惠券",
+            "扫二维码付款-给早餐",
+            "3月29日08:42",
+            "-5.00",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="03-28", merchant_item="滴滴出行", amount="28.00"),
+        ExpenseRow(
+            date="03-29",
+            merchant_item="扫二维码付款-给早餐",
+            amount="5.00",
+        ),
+    ]
+
+
+def test_extract_expense_rows_splits_partial_row_before_follow_up_date_merchant_amount():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "美式咖啡",
+            "2026-03-30 09:15",
+            "便利店",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount=""),
+        ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_partial_row_before_follow_up_date_bare_amount():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "星巴克咖啡",
+            "美式咖啡",
+            "2026-03-30 09:15",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="2026-03-29", merchant_item="星巴克咖啡", amount=""),
+        ExpenseRow(date="2026-03-30", merchant_item="", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_drops_date_only_trailing_fragments():
+    rows = extract_expense_rows(
+        [
+            "微信支付",
+            "2026-03-29 18:21",
+            "支付成功",
+        ]
+    )
+
+    assert rows == []
 
 
 def test_parse_expense_row_supports_dot_delimited_month_day_date_with_time():

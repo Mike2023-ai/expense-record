@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import date as date_type, datetime as datetime_type
 from collections.abc import Iterable
 from pathlib import Path
