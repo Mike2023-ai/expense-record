@@ -271,6 +271,20 @@ def test_extract_expense_rows_returns_single_row_through_new_entrypoint():
     ]
 
 
+def test_extract_expense_rows_ignores_trailing_payment_noise_without_creating_new_row():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "微信支付",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00")
+    ]
+
+
 def test_extract_expense_rows_keeps_two_description_lines_in_one_transaction():
     rows = extract_expense_rows(
         [
@@ -411,6 +425,23 @@ def test_extract_expense_rows_splits_dateless_amount_row_before_follow_up_date_m
     assert rows == [
         ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
         ExpenseRow(date="2026-03-30", merchant_item="便利店", amount="8.50"),
+    ]
+
+
+def test_extract_expense_rows_splits_dateless_amount_row_before_payment_noise_merchant_amount():
+    rows = extract_expense_rows(
+        [
+            "星巴克咖啡",
+            "￥32.00",
+            "微信支付",
+            "便利店",
+            "￥8.50",
+        ]
+    )
+
+    assert rows == [
+        ExpenseRow(date="", merchant_item="星巴克咖啡", amount="32.00"),
+        ExpenseRow(date="", merchant_item="便利店", amount="8.50"),
     ]
 
 

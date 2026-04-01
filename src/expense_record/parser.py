@@ -125,6 +125,15 @@ def _group_expense_lines(lines: list[str]) -> list[list[str]]:
                 else:
                     current_group.extend(pending_prefix)
                     pending_prefix = []
+            elif (
+                _pending_prefix_has_transaction_marker(pending_prefix)
+                and _group_contains_amount_line(current_group)
+            ):
+                if current_group:
+                    groups.append(current_group)
+                current_group = pending_prefix
+                pending_prefix = []
+                has_transaction_content = False
             elif _pending_prefix_has_accepted_date(pending_prefix, line):
                 if _group_contains_date_or_time(current_group):
                     if current_group:
@@ -471,6 +480,15 @@ def _pending_prefix_has_accepted_date(lines: list[str], current_line: str) -> bo
 
 def _pending_prefix_has_full_date(lines: list[str]) -> bool:
     return any(any(pattern.search(line) for pattern in DATE_PATTERNS) for line in lines)
+
+
+def _pending_prefix_has_transaction_marker(lines: list[str]) -> bool:
+    return any(
+        _contains_payment_noise(line)
+        or _contains_merchant_metadata(line)
+        or _is_split_merchant_label_piece(lines, index)
+        for index, line in enumerate(lines)
+    )
 
 
 def _is_separator_month_day_without_time_line(line: str) -> bool:
