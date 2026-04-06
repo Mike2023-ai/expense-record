@@ -25,6 +25,26 @@ def test_detect_statement_source_identifies_alipay_csv_bytes():
     assert source == "alipay"
 
 
+def test_detect_statement_source_rejects_unsupported_wechat_xlsx_layout():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        detect_statement_source("wechat.xlsx", _unsupported_wechat_fixture_bytes())
+
+
+def test_detect_statement_source_rejects_unsupported_alipay_csv_layout():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        detect_statement_source("alipay.csv", _unsupported_alipay_fixture_bytes())
+
+
+def test_detect_statement_source_rejects_malformed_xlsx_bytes():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        detect_statement_source("wechat.xlsx", b"not a zip archive")
+
+
+def test_detect_statement_source_rejects_malformed_csv_bytes():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        detect_statement_source("alipay.csv", b"\xff\xfe\x00\x00")
+
+
 def test_import_statement_rows_normalizes_wechat_rows():
     rows = import_statement_rows("wechat.xlsx", _wechat_fixture_bytes())
 
@@ -68,6 +88,26 @@ def test_import_statement_rows_rejects_unsupported_file():
         import_statement_rows("notes.txt", b"not a statement")
 
 
+def test_import_statement_rows_rejects_unsupported_wechat_xlsx_layout():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("wechat.xlsx", _unsupported_wechat_fixture_bytes())
+
+
+def test_import_statement_rows_rejects_unsupported_alipay_csv_layout():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("alipay.csv", _unsupported_alipay_fixture_bytes())
+
+
+def test_import_statement_rows_rejects_malformed_xlsx_bytes():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("wechat.xlsx", b"not a zip archive")
+
+
+def test_import_statement_rows_rejects_malformed_csv_bytes():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("alipay.csv", b"\xff\xfe\x00\x00")
+
+
 def _wechat_fixture_bytes() -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
@@ -84,6 +124,21 @@ def _wechat_fixture_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _unsupported_wechat_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["导出时间", "2026-04-06"])
+    worksheet.append(["账单说明", "微信账单"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对象", "商品说明", "收/支", "金额(元)"])
+    worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", 26.5])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 def _alipay_fixture_bytes() -> bytes:
     return (
         "支付宝账单\n"
@@ -91,4 +146,13 @@ def _alipay_fixture_bytes() -> bytes:
         "交易时间,交易分类,交易对方,商品说明,资金状态,收/支,金额\n"
         "2026-04-03 18:40:31,消费,淘宝闪购,外卖,成功,支出,25.4\n"
         "2026-04-05 04:08:45,理财,中欧基金管理有限公司,基金,成功,不计收支,0.02\n"
+    ).encode("gb18030")
+
+
+def _unsupported_alipay_fixture_bytes() -> bytes:
+    return (
+        "支付宝账单\n"
+        "账单说明,支付宝账单\n"
+        "交易时间,交易分类,交易对象,商品说明,资金状态,收/支,金额\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,外卖,成功,支出,25.4\n"
     ).encode("gb18030")

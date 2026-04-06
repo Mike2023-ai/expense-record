@@ -25,22 +25,32 @@ XML_PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 
 
 def detect_statement_source(filename: str, raw_bytes: bytes) -> str:
-    lowered = filename.lower()
-    if lowered.endswith(".xlsx") and _xlsx_contains_text(raw_bytes, "微信"):
-        return "wechat"
-    if lowered.endswith(".csv"):
-        decoded = raw_bytes.decode("gb18030")
-        if "支付宝" in decoded and "交易时间,交易分类,交易对方" in decoded:
+    try:
+        lowered = filename.lower()
+        if lowered.endswith(".xlsx"):
+            _detect_wechat_xlsx_layout(raw_bytes)
+            return "wechat"
+        if lowered.endswith(".csv"):
+            _detect_alipay_csv_layout(raw_bytes)
             return "alipay"
+    except UnsupportedStatementFileError:
+        raise
+    except Exception:
+        pass
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
 def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImportRow]:
-    source = detect_statement_source(filename, raw_bytes)
-    if source == "wechat":
-        return _import_wechat_rows(raw_bytes)
-    if source == "alipay":
-        return _import_alipay_rows(raw_bytes)
+    try:
+        source = detect_statement_source(filename, raw_bytes)
+        if source == "wechat":
+            return _import_wechat_rows(raw_bytes)
+        if source == "alipay":
+            return _import_alipay_rows(raw_bytes)
+    except UnsupportedStatementFileError:
+        raise
+    except Exception:
+        pass
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
@@ -148,14 +158,14 @@ def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:
     return [row for row in csv_reader(StringIO(decoded))]
 
 
-def _xlsx_contains_text(raw_bytes: bytes, needle: str) -> bool:
-    with ZipFile(BytesIO(raw_bytes)) as archive:
-        for name in archive.namelist():
-            if not name.endswith(".xml"):
-                continue
-            if needle in archive.read(name).decode("utf-8", errors="ignore"):
-                return True
-    return False
+def _detect_wechat_xlsx_layout(raw_bytes: bytes) -> None:
+    sheet_rows = _read_xlsx_rows(raw_bytes)
+    _find_header_row_index(sheet_rows, WECHAT_HEADER_SIGNATURE)
+
+
+def _detect_alipay_csv_layout(raw_bytes: bytes) -> None:
+    csv_rows = _read_alipay_csv_rows(raw_bytes)
+    _find_header_row_index(csv_rows, ALIPAY_HEADER_SIGNATURE)
 
 
 def _read_xlsx_rows(raw_bytes: bytes) -> list[list[str]]:
