@@ -19,7 +19,7 @@ ALIPAY_HEADER_SIGNATURE = ("交易时间", "交易对方", "收/支", "金额")
 WECHAT_HEADER_POSITIONS = (0, 2, 4, 5)
 ALIPAY_HEADER_POSITIONS = (0, 2, 5, 6)
 WECHAT_SOURCE_MARKERS = ("微信支付账单明细",)
-ALIPAY_SOURCE_MARKERS = ("支付宝", "电子回单")
+ALIPAY_SOURCE_MARKERS = ("电子客户回单", "电子回单", "支付宝支付科技有限公司", "支付宝账户")
 
 XML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"

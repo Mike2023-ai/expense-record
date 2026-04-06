@@ -55,6 +55,11 @@ def test_detect_statement_source_rejects_alipay_header_without_source_marker():
         detect_statement_source("alipay.csv", _alipay_header_only_fixture_bytes())
 
 
+def test_detect_statement_source_rejects_alipay_impostor_with_generic_alipay_text():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        detect_statement_source("alipay.csv", _alipay_impostor_fixture_bytes())
+
+
 def test_import_statement_rows_normalizes_wechat_rows():
     rows = import_statement_rows("wechat.xlsx", _wechat_fixture_bytes())
 
@@ -128,6 +133,11 @@ def test_import_statement_rows_rejects_alipay_header_without_source_marker():
         import_statement_rows("alipay.csv", _alipay_header_only_fixture_bytes())
 
 
+def test_import_statement_rows_rejects_alipay_impostor_with_generic_alipay_text():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("alipay.csv", _alipay_impostor_fixture_bytes())
+
+
 def _wechat_fixture_bytes() -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
@@ -161,8 +171,8 @@ def _wechat_header_only_fixture_bytes() -> bytes:
 
 def _alipay_fixture_bytes() -> bytes:
     return (
-        "支付宝账单\n"
-        "账单说明,支付宝账单\n"
+        "支付宝支付科技有限公司\n"
+        "账单说明,支付宝账户\n"
         "交易时间,交易分类,交易对方,商品说明,资金状态,收/支,金额\n"
         "2026-04-03 18:40:31,消费,淘宝闪购,外卖,成功,支出,25.4\n"
         "2026-04-05 04:08:45,理财,中欧基金管理有限公司,基金,成功,不计收支,0.02\n"
@@ -174,5 +184,14 @@ def _alipay_header_only_fixture_bytes() -> bytes:
         "账单说明,电子账单\n"
         "收支明细导出,2026-04-06\n"
         "交易时间,交易分类,交易对象,商品说明,资金状态,收/支,金额\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,外卖,成功,支出,25.4\n"
+    ).encode("gb18030")
+
+
+def _alipay_impostor_fixture_bytes() -> bytes:
+    return (
+        "支付宝账单\n"
+        "账单说明,支付宝账单\n"
+        "交易时间,交易分类,交易对方,商品说明,资金状态,收/支,金额\n"
         "2026-04-03 18:40:31,消费,淘宝闪购,外卖,成功,支出,25.4\n"
     ).encode("gb18030")
