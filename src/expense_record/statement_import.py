@@ -30,16 +30,14 @@ ALIPAY_HEADER_ROW = (
     "商家订单号",
     "备注",
 )
-WECHAT_HEADER_POSITIONS = (0, 2, 4, 5)
-ALIPAY_HEADER_POSITIONS = (0, 2, 5, 6)
 WECHAT_SOURCE_MARKERS = ("微信支付账单明细",)
 ALIPAY_SOURCE_MARKERS = ("电子客户回单", "电子回单", "支付宝支付科技有限公司")
 
 XML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
-PARSE_ERROR_TYPES = (UnicodeDecodeError, BadZipFile, ET.ParseError, InvalidOperation, KeyError)
-WECHAT_TIME_CANDIDATE_RE = re.compile(r"^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,4}(?:\.\d+)?)$")
+PARSE_ERROR_TYPES = (UnicodeDecodeError, BadZipFile, ET.ParseError, InvalidOperation, KeyError, IndexError, ValueError)
+WECHAT_TIME_CANDIDATE_RE = re.compile(r"^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d+(?:\.\d+)?)$")
 ALIPAY_TIME_CANDIDATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?$")
 
 
@@ -154,14 +152,10 @@ def _is_empty_row(row: list[str]) -> bool:
 
 
 def _row_looks_like_wechat_transaction_candidate(row: list[str]) -> bool:
-    if len(row) < len(WECHAT_HEADER_ROW):
-        return False
     return bool(row[0].strip()) and bool(WECHAT_TIME_CANDIDATE_RE.match(row[0].strip()))
 
 
 def _row_looks_like_alipay_transaction_candidate(row: list[str]) -> bool:
-    if len(row) < len(ALIPAY_HEADER_ROW):
-        return False
     return bool(row[0].strip()) and bool(ALIPAY_TIME_CANDIDATE_RE.match(row[0].strip()))
 
 

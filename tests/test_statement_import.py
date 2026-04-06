@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from io import BytesIO
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 
 import pytest
 from openpyxl import Workbook
@@ -146,6 +148,16 @@ def test_import_statement_rows_rejects_malformed_alipay_transaction_row_after_he
         import_statement_rows("alipay.csv", _alipay_malformed_transaction_fixture_bytes())
 
 
+def test_import_statement_rows_rejects_shortened_wechat_detail_row_after_header():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("wechat.xlsx", _wechat_shortened_transaction_fixture_bytes())
+
+
+def test_import_statement_rows_rejects_shortened_alipay_detail_row_after_header():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("alipay.csv", _alipay_shortened_transaction_fixture_bytes())
+
+
 def test_import_statement_rows_rejects_unsupported_file():
     with pytest.raises(UnsupportedStatementFileError):
         import_statement_rows("notes.txt", b"not a statement")
@@ -184,6 +196,11 @@ def test_import_statement_rows_rejects_alipay_generic_marker_with_valid_full_hea
 def test_import_statement_rows_rejects_invalid_alipay_timestamp_with_colons():
     with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
         import_statement_rows("alipay.csv", _alipay_invalid_timestamp_fixture_bytes())
+
+
+def test_import_statement_rows_rejects_corrupted_xlsx_shared_string_reference():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("wechat.xlsx", _corrupted_shared_string_reference_fixture_bytes())
 
 
 def test_import_statement_rows_rejects_wechat_marker_with_header_subset_layout():
@@ -233,6 +250,21 @@ def _wechat_malformed_transaction_fixture_bytes() -> bytes:
     worksheet.append([])
     worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
     worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", "not-an-amount"])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _wechat_shortened_transaction_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细", "2026-04-06"])
+    worksheet.append(["账单说明", "微信支付账单明细"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
+    worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出"])
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -314,6 +346,15 @@ def _alipay_malformed_transaction_fixture_bytes() -> bytes:
     ).encode("gb18030")
 
 
+def _alipay_shortened_transaction_fixture_bytes() -> bytes:
+    return (
+        "支付宝支付科技有限公司\n"
+        "账单说明,支付宝账户\n"
+        "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001\n"
+    ).encode("gb18030")
+
+
 def _alipay_missing_marker_fixture_bytes() -> bytes:
     return (
         "账单说明,电子账单\n"
@@ -339,3 +380,42 @@ def _alipay_invalid_timestamp_fixture_bytes() -> bytes:
         "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
         "2026-04-03 18:40,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001,202604030001A,外卖\n"
     ).encode("gb18030")
+
+
+def _corrupted_shared_string_reference_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细", "2026-04-06"])
+    worksheet.append(["账单说明", "微信支付账单明细"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
+    worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", 26.5])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    original = buffer.getvalue()
+
+    input_zip = BytesIO(original)
+    output_zip = BytesIO()
+    with ZipFile(input_zip, "r") as zin, ZipFile(output_zip, "w") as zout:
+        for info in zin.infolist():
+            data = zin.read(info.filename)
+            if info.filename == "xl/worksheets/sheet1.xml":
+                data = _corrupt_sheet1_shared_string_reference(data)
+            zout.writestr(info, data)
+    return output_zip.getvalue()
+
+
+def _corrupt_sheet1_shared_string_reference(sheet_xml: bytes) -> bytes:
+    root = ET.fromstring(sheet_xml)
+    ns = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    cell = root.find(".//main:c[@r='C5']", ns)
+    if cell is None:
+        raise AssertionError("expected worksheet cell not found")
+    for child in list(cell):
+        cell.remove(child)
+    cell.attrib["t"] = "s"
+    value = ET.SubElement(cell, "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}v")
+    value.text = "999"
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
