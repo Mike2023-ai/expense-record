@@ -99,25 +99,28 @@ def save_row():
     rows_to_save: list[ExpenseRow] = []
     selected_count = 0
     if isinstance(payload, dict) and payload.get("mode") == "statement":
-        statement_rows: list[StatementImportRow] = []
         for row_payload in rows_payload:
-            if not isinstance(row_payload, dict):
+            selected_row = _normalize_selected_statement_save_row(row_payload)
+            if selected_row is None:
                 return jsonify({"error": "Invalid save payload."}), 400
-            selected = row_payload.get("selected", True)
-            if not isinstance(selected, bool):
-                return jsonify({"error": "Invalid save payload."}), 400
-            if not selected:
+            if selected_row is False:
                 continue
             selected_count += 1
-            statement_rows.append(
-                StatementImportRow(
-                    transaction_time=_coerce_statement_save_field(row_payload, "transaction_time") or "",
-                    counterparty=_coerce_statement_save_field(row_payload, "counterparty") or "",
-                    direction=_coerce_statement_save_field(row_payload, "direction") or "",
-                    amount=_coerce_statement_save_field(row_payload, "amount") or "",
+            statement_row = selected_row
+            if _statement_row_is_effectively_blank(statement_row):
+                return jsonify({"error": "At least one selected row is required."}), 400
+            rows_to_save.extend(
+                _statement_rows_to_expense_rows(
+                    [
+                        StatementImportRow(
+                            transaction_time=statement_row.transaction_time,
+                            counterparty=statement_row.counterparty,
+                            direction=statement_row.direction,
+                            amount=statement_row.amount,
+                        )
+                    ]
                 )
             )
-        rows_to_save.extend(_statement_rows_to_expense_rows(_normalize_statement_rows(statement_rows)))
     else:
         for row_payload in rows_payload:
             if not isinstance(row_payload, dict):
@@ -194,6 +197,41 @@ def _coerce_statement_save_field(payload: object, field: str) -> str | None:
     if value is None or not isinstance(value, str):
         return None
     return value.strip()
+
+
+def _normalize_selected_statement_save_row(payload: object) -> StatementImportRow | bool | None:
+    if not isinstance(payload, dict):
+        return None
+
+    selected = payload.get("selected", True)
+    if not isinstance(selected, bool):
+        return None
+    if not selected:
+        return False
+
+    transaction_time = _coerce_statement_save_field(payload, "transaction_time")
+    counterparty = _coerce_statement_save_field(payload, "counterparty")
+    direction = _coerce_statement_save_field(payload, "direction")
+    amount = _coerce_statement_save_field(payload, "amount")
+
+    if (
+        transaction_time is None
+        or counterparty is None
+        or direction is None
+        or amount is None
+    ):
+        return None
+
+    return StatementImportRow(
+        transaction_time=transaction_time,
+        counterparty=counterparty,
+        direction=direction,
+        amount=amount,
+    )
+
+
+def _statement_row_is_effectively_blank(row: StatementImportRow) -> bool:
+    return not any((row.transaction_time, row.counterparty, row.direction, row.amount))
 
 
 def _statement_rows_to_expense_rows(rows: list[StatementImportRow]) -> list[ExpenseRow]:

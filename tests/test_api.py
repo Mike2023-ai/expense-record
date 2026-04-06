@@ -1020,6 +1020,77 @@ def test_save_endpoint_persists_selected_statement_rows(tmp_path):
     ]
 
 
+@pytest.mark.parametrize(
+    ("row_payload", "description"),
+    [
+        (
+            {
+                "transaction_time": ["2026-03-29 18:44:00"],
+                "counterparty": "叫了个炸鸡",
+                "direction": "支出",
+                "amount": "26.50",
+                "selected": True,
+            },
+            "non-string transaction_time",
+        ),
+        (
+            {
+                "transaction_time": "2026-03-29 18:44:00",
+                "counterparty": {"name": "叫了个炸鸡"},
+                "direction": "支出",
+                "amount": "26.50",
+                "selected": True,
+            },
+            "non-string counterparty",
+        ),
+        (
+            {
+                "transaction_time": "2026-03-29 18:44:00",
+                "counterparty": "叫了个炸鸡",
+                "direction": "支出",
+                "selected": True,
+            },
+            "missing amount",
+        ),
+    ],
+)
+def test_save_endpoint_rejects_malformed_statement_rows(tmp_path, row_payload, description):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={"mode": "statement", "rows": [row_payload]},
+    )
+
+    assert response.status_code == 400, description
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
+def test_save_endpoint_rejects_whitespace_only_statement_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "transaction_time": "   ",
+                    "counterparty": " \t ",
+                    "direction": "\n",
+                    "amount": "   ",
+                    "selected": True,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "At least one selected row is required."}
+
+
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
