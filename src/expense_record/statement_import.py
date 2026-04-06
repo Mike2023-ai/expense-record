@@ -37,7 +37,13 @@ XML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 PARSE_ERROR_TYPES = (UnicodeDecodeError, BadZipFile, ET.ParseError, InvalidOperation, KeyError, IndexError, ValueError)
-WECHAT_TIME_CANDIDATE_RE = re.compile(r"^(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d+(?:\.\d+)?)$")
+WECHAT_TIME_CANDIDATE_RE = re.compile(
+    r"^(?:"
+    r"\d{4}[-/.]\d{1,2}[-/.]\d{1,2}"
+    r"(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?"
+    r"|\d+(?:\.\d+)?"
+    r")$"
+)
 ALIPAY_TIME_CANDIDATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(?::\d{2})?$")
 
 

@@ -153,6 +153,11 @@ def test_import_statement_rows_rejects_shortened_wechat_detail_row_after_header(
         import_statement_rows("wechat.xlsx", _wechat_shortened_transaction_fixture_bytes())
 
 
+def test_import_statement_rows_rejects_shortened_wechat_text_timestamp_row_after_header():
+    with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
+        import_statement_rows("wechat.xlsx", _wechat_shortened_text_timestamp_fixture_bytes())
+
+
 def test_import_statement_rows_rejects_shortened_alipay_detail_row_after_header():
     with pytest.raises(UnsupportedStatementFileError, match="Unsupported or ambiguous statement file."):
         import_statement_rows("alipay.csv", _alipay_shortened_transaction_fixture_bytes())
@@ -265,6 +270,21 @@ def _wechat_shortened_transaction_fixture_bytes() -> bytes:
     worksheet.append([])
     worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
     worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出"])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _wechat_shortened_text_timestamp_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细", "2026-04-06"])
+    worksheet.append(["账单说明", "微信支付账单明细"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
+    worksheet.append(["2026-03-29 18:44:00", "支付", "叫了个炸鸡", "晚餐", "支出"])
 
     buffer = BytesIO()
     workbook.save(buffer)
