@@ -50,6 +50,21 @@
 
       <section class="panel">
         <div class="panel-header">
+          <h2>1B. Import statement file</h2>
+          <p>Upload a supported WeChat or Alipay export file.</p>
+        </div>
+
+        <div class="upload-row">
+          <label class="file-picker">
+            <span>Upload statement</span>
+            <input id="statement-file-input" type="file" accept=".xlsx,.csv">
+          </label>
+          <button id="import-statement-button" type="button">Import Statement</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
           <h2>2. Review rows</h2>
           <p>Adjust the extracted values, uncheck any row you do not want, then save the selected rows.</p>
         </div>
@@ -57,7 +72,7 @@
         <div class="table-wrap">
           <table id="review-table" class="review-table">
             <thead>
-              <tr>
+              <tr id="review-header">
                 <th>Use</th>
                 <th>Date</th>
                 <th>Merchant / Item</th>

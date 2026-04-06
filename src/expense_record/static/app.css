@@ -156,6 +156,7 @@ input[type="file"] {
 }
 
 #extract-button,
+#import-statement-button,
 #save-button {
   border: 0;
   border-radius: 999px;
@@ -169,12 +170,14 @@ input[type="file"] {
 }
 
 #extract-button:hover,
+#import-statement-button:hover,
 #save-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 14px 28px rgba(127, 61, 18, 0.28);
 }
 
 #extract-button:disabled,
+#import-statement-button:disabled,
 #save-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

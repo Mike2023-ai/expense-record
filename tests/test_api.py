@@ -38,6 +38,17 @@ def test_index_page_contains_review_table_container():
     assert b'id="review-body"' in response.data
 
 
+def test_index_page_contains_statement_import_controls():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'id="statement-file-input"' in response.data
+    assert b'id="import-statement-button"' in response.data
+
+
 def test_index_page_uses_review_table_columns():
     app = create_app({"TESTING": True})
     client = app.test_client()
@@ -137,12 +148,15 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           "paste-zone": makeElement("paste-zone"),
           "preview-image": makeElement("preview-image"),
           "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
           "ocr-lines-panel": makeElement("ocr-lines-panel"),
           "ocr-lines-list": makeElement("ocr-lines-list"),
           "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
           "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
@@ -399,6 +413,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           elements["save-button"].listeners.click();
           const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
           assert.deepStrictEqual(JSON.parse(saveCall.options.body), {
+            mode: "image",
             rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00", selected: true }],
           });
           pendingSaveResponses.shift()({
@@ -475,12 +490,15 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           "paste-zone": makeElement("paste-zone"),
           "preview-image": makeElement("preview-image"),
           "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
           "ocr-lines-panel": makeElement("ocr-lines-panel"),
           "ocr-lines-list": makeElement("ocr-lines-list"),
           "extract-button": makeElement("extract-button"),
           "save-button": makeElement("save-button"),
           "status-message": makeElement("status-message"),
           "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
           "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
         };
@@ -595,6 +613,107 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           console.error(error);
           process.exit(1);
         });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
+def test_frontend_exposes_statement_import_controls():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            listeners: {},
+            children: [],
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+        };
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {
+            readAsDataURL() {}
+          },
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          fetch: async () => ({ ok: true, json: async () => ({ rows: [] }) }),
+          document: {
+            addEventListener() {},
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        assert.ok(elements["statement-file-input"]);
+        assert.ok(elements["import-statement-button"]);
         """
     )
 

@@ -3,18 +3,24 @@ const elements = {
   pasteZone: document.getElementById("paste-zone"),
   previewImage: document.getElementById("preview-image"),
   previewCaption: document.getElementById("preview-caption"),
+  statementFileInput: document.getElementById("statement-file-input"),
+  importStatementButton: document.getElementById("import-statement-button"),
   ocrLinesPanel: document.getElementById("ocr-lines-panel"),
   ocrLinesList: document.getElementById("ocr-lines-list"),
   extractButton: document.getElementById("extract-button"),
   saveButton: document.getElementById("save-button"),
   statusMessage: document.getElementById("status-message"),
   reviewBody: document.getElementById("review-body"),
+  reviewHeader: document.getElementById("review-header"),
   recordsBody: document.getElementById("records-body"),
 };
 
 let selectedFile = null;
+let selectedStatementFile = null;
+let activeMode = "image";
 let activeSelectionToken = 0;
 let latestExtractRequestToken = 0;
+let latestImportRequestToken = 0;
 let extractedSelectionToken = 0;
 
 function setStatus(message, isError = false) {
@@ -57,6 +63,24 @@ function clearReviewRows() {
   clearChildren(elements.reviewBody);
 }
 
+function renderReviewHeader(mode) {
+  if (!elements.reviewHeader) {
+    return;
+  }
+
+  const headers =
+    mode === "statement"
+      ? ["Use", "Transaction Time", "Counterparty", "Direction", "Amount"]
+      : ["Use", "Date", "Merchant / Item", "Amount"];
+
+  clearChildren(elements.reviewHeader);
+  for (const label of headers) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    elements.reviewHeader.appendChild(th);
+  }
+}
+
 function createInputCell(value, placeholder) {
   const td = document.createElement("td");
   const input = document.createElement("input");
@@ -68,6 +92,7 @@ function createInputCell(value, placeholder) {
 }
 
 function renderReviewRows(rows) {
+  renderReviewHeader("image");
   clearReviewRows();
   const normalizedRows = Array.isArray(rows) ? rows : [];
   for (const row of normalizedRows) {
@@ -82,6 +107,31 @@ function renderReviewRows(rows) {
 
     tr.appendChild(createInputCell(row.date, "MM-DD"));
     tr.appendChild(createInputCell(row.merchant_item, "Merchant or description"));
+    tr.appendChild(createInputCell(row.amount, "0.00"));
+
+    elements.reviewBody.appendChild(tr);
+  }
+
+  elements.saveButton.disabled = normalizedRows.length === 0;
+}
+
+function renderStatementReviewRows(rows) {
+  renderReviewHeader("statement");
+  clearReviewRows();
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  for (const row of normalizedRows) {
+    const tr = document.createElement("tr");
+
+    const checkboxCell = document.createElement("td");
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = true;
+    checkboxCell.appendChild(checkbox);
+    tr.appendChild(checkboxCell);
+
+    tr.appendChild(createInputCell(row.transaction_time, "YYYY-MM-DD HH:MM:SS"));
+    tr.appendChild(createInputCell(row.counterparty, "Counterparty"));
+    tr.appendChild(createInputCell(row.direction, "支出 / 收入 / 不计收支"));
     tr.appendChild(createInputCell(row.amount, "0.00"));
 
     elements.reviewBody.appendChild(tr);
@@ -105,13 +155,34 @@ function resetSelectionState(label) {
 
 function setSelectedFile(file, label = file.name) {
   selectedFile = file;
+  selectedStatementFile = null;
+  activeMode = "image";
   activeSelectionToken += 1;
   const selectionToken = activeSelectionToken;
   latestExtractRequestToken = 0;
+  latestImportRequestToken = 0;
   resetSelectionState(label);
+  elements.statementFileInput.value = "";
+  elements.importStatementButton.disabled = true;
   elements.extractButton.disabled = false;
+  renderReviewHeader("image");
   renderPreview(file, selectionToken);
   setStatus(`Loaded ${label}. Ready to extract.`);
+}
+
+function setSelectedStatementFile(file, label = file.name) {
+  selectedStatementFile = file;
+  selectedFile = null;
+  activeMode = "statement";
+  activeSelectionToken += 1;
+  latestExtractRequestToken = 0;
+  latestImportRequestToken = 0;
+  resetSelectionState("No screenshot selected yet.");
+  elements.fileInput.value = "";
+  elements.extractButton.disabled = true;
+  elements.importStatementButton.disabled = false;
+  renderReviewHeader("statement");
+  setStatus(`Loaded ${label}. Ready to import.`);
 }
 
 function renderPreview(file, selectionToken) {
@@ -195,6 +266,7 @@ async function extractRows() {
       return;
     }
 
+    activeMode = "image";
     renderReviewRows(data.rows);
     renderOcrLines(data.lines);
     extractedSelectionToken = Array.isArray(data.rows) && data.rows.length > 0 ? selectionToken : 0;
@@ -216,7 +288,62 @@ async function extractRows() {
   }
 }
 
+async function importStatementRows() {
+  if (!selectedStatementFile) {
+    setStatus("Choose a statement file before importing.", true);
+    return;
+  }
+
+  const selectionToken = activeSelectionToken;
+  const requestToken = ++latestImportRequestToken;
+  elements.importStatementButton.disabled = true;
+  setStatus("Importing statement file...");
+
+  const formData = new FormData();
+  formData.append("statement_file", selectedStatementFile, selectedStatementFile.name);
+
+  try {
+    const response = await fetch("/api/import-statement", { method: "POST", body: formData });
+    const data = await response.json();
+
+    if (selectionToken !== activeSelectionToken || requestToken !== latestImportRequestToken) {
+      return;
+    }
+
+    if (!response.ok) {
+      clearReviewState();
+      setStatus(data.error || "Statement import failed.", true);
+      return;
+    }
+
+    activeMode = "statement";
+    extractedSelectionToken = 0;
+    renderStatementReviewRows(data.rows);
+    setStatus("Statement imported. Review the rows before saving.");
+  } catch (_error) {
+    if (selectionToken !== activeSelectionToken || requestToken !== latestImportRequestToken) {
+      return;
+    }
+    clearReviewState();
+    setStatus("Statement import failed.", true);
+  } finally {
+    if (selectionToken === activeSelectionToken && requestToken === latestImportRequestToken) {
+      elements.importStatementButton.disabled = false;
+    }
+  }
+}
+
 function collectReviewRows() {
+  if (activeMode === "statement") {
+    return Array.from(elements.reviewBody.children).map((row) => ({
+      selected: Boolean(row.children[0].children[0].checked),
+      transaction_time: row.children[1].children[0].value.trim(),
+      counterparty: row.children[2].children[0].value.trim(),
+      direction: row.children[3].children[0].value.trim(),
+      amount: row.children[4].children[0].value.trim(),
+    }));
+  }
+
   return Array.from(elements.reviewBody.children).map((row) => ({
     selected: Boolean(row.children[0].children[0].checked),
     date: row.children[1].children[0].value.trim(),
@@ -226,19 +353,30 @@ function collectReviewRows() {
 }
 
 async function saveRows() {
-  if (elements.saveButton.disabled || extractedSelectionToken !== activeSelectionToken) {
+  if (elements.saveButton.disabled) {
+    setStatus(
+      activeMode === "statement"
+        ? "Import a statement before saving."
+        : "Extract the current screenshot before saving.",
+      true
+    );
+    return;
+  }
+
+  if (activeMode === "image" && extractedSelectionToken !== activeSelectionToken) {
     setStatus("Extract the current screenshot before saving.", true);
     return;
   }
 
   const selectionToken = activeSelectionToken;
   elements.saveButton.disabled = true;
+  let saveSucceeded = false;
 
   try {
     const response = await fetch("/api/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: collectReviewRows() }),
+      body: JSON.stringify({ mode: activeMode, rows: collectReviewRows() }),
     });
     const data = await response.json();
 
@@ -255,13 +393,14 @@ async function saveRows() {
     clearReviewState();
     extractedSelectionToken = 0;
     setStatus("Rows saved to Excel.");
+    saveSucceeded = true;
   } catch (_error) {
     if (selectionToken !== activeSelectionToken) {
       return;
     }
     setStatus("Save failed.", true);
   } finally {
-    if (selectionToken === activeSelectionToken && extractedSelectionToken === activeSelectionToken) {
+    if (selectionToken === activeSelectionToken && !saveSucceeded) {
       elements.saveButton.disabled = false;
     }
   }
@@ -272,6 +411,13 @@ function handleFileSelection(file) {
     return;
   }
   setSelectedFile(file);
+}
+
+function handleStatementFileSelection(file) {
+  if (!file) {
+    return;
+  }
+  setSelectedStatementFile(file);
 }
 
 function isEditablePasteTarget(target) {
@@ -307,6 +453,11 @@ elements.fileInput.addEventListener("change", (event) => {
   handleFileSelection(file);
 });
 
+elements.statementFileInput.addEventListener("change", (event) => {
+  const [file] = event.target.files;
+  handleStatementFileSelection(file);
+});
+
 if (typeof document.addEventListener === "function") {
   document.addEventListener("paste", handlePaste);
 }
@@ -315,11 +466,16 @@ elements.extractButton.addEventListener("click", () => {
   void extractRows();
 });
 
+elements.importStatementButton.addEventListener("click", () => {
+  void importStatementRows();
+});
+
 elements.saveButton.addEventListener("click", () => {
   void saveRows();
 });
 
 elements.extractButton.disabled = true;
+elements.importStatementButton.disabled = true;
 elements.saveButton.disabled = true;
 
 void loadRows().catch(() => {
