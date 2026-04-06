@@ -100,6 +100,22 @@ def test_import_statement_rows_normalizes_alipay_rows():
     ]
 
 
+def test_statement_import_row_to_dict_returns_api_shape():
+    row = StatementImportRow(
+        transaction_time="2026-03-29 18:44:00",
+        counterparty="叫了个炸鸡",
+        direction="支出",
+        amount="26.50",
+    )
+
+    assert row.to_dict() == {
+        "transaction_time": "2026-03-29 18:44:00",
+        "counterparty": "叫了个炸鸡",
+        "direction": "支出",
+        "amount": "26.50",
+    }
+
+
 def test_import_statement_rows_skips_wechat_footer_row_after_detail_table():
     rows = import_statement_rows("wechat.xlsx", _wechat_with_footer_fixture_bytes())
 

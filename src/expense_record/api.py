@@ -5,7 +5,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request
 
 from expense_record.config import DEFAULT_EXCEL_PATH
-from expense_record.models import ExpenseRow
+from expense_record.models import ExpenseRow, StatementImportRow
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import extract_expense_rows
 
@@ -52,6 +52,25 @@ def extract_row():
     return jsonify(payload)
 
 
+@api.post("/import-statement")
+def import_statement():
+    statement_file = request.files.get("statement_file")
+    if statement_file is None or statement_file.filename == "":
+        return jsonify({"error": "No statement file provided."}), 400
+
+    from expense_record.statement_import import UnsupportedStatementFileError, import_statement_rows
+
+    try:
+        rows = _normalize_statement_rows(import_statement_rows(statement_file.filename, statement_file.read()))
+    except UnsupportedStatementFileError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception:
+        current_app.logger.exception("Statement import failed")
+        return jsonify({"error": "Statement import failed."}), 500
+
+    return jsonify({"rows": [row.to_dict() for row in rows]})
+
+
 def _coerce_save_field(payload: object, field: str) -> str | None:
     if not isinstance(payload, dict):
         return None
@@ -79,26 +98,47 @@ def save_row():
     storage = _storage()
     rows_to_save: list[ExpenseRow] = []
     selected_count = 0
-    for row_payload in rows_payload:
-        if not isinstance(row_payload, dict):
-            return jsonify({"error": "Invalid save payload."}), 400
-        selected = row_payload.get("selected", True)
-        if not isinstance(selected, bool):
-            return jsonify({"error": "Invalid save payload."}), 400
-        if not selected:
-            continue
-        selected_count += 1
+    if isinstance(payload, dict) and payload.get("mode") == "statement":
+        statement_rows: list[StatementImportRow] = []
+        for row_payload in rows_payload:
+            if not isinstance(row_payload, dict):
+                return jsonify({"error": "Invalid save payload."}), 400
+            selected = row_payload.get("selected", True)
+            if not isinstance(selected, bool):
+                return jsonify({"error": "Invalid save payload."}), 400
+            if not selected:
+                continue
+            selected_count += 1
+            statement_rows.append(
+                StatementImportRow(
+                    transaction_time=_coerce_statement_save_field(row_payload, "transaction_time") or "",
+                    counterparty=_coerce_statement_save_field(row_payload, "counterparty") or "",
+                    direction=_coerce_statement_save_field(row_payload, "direction") or "",
+                    amount=_coerce_statement_save_field(row_payload, "amount") or "",
+                )
+            )
+        rows_to_save.extend(_statement_rows_to_expense_rows(_normalize_statement_rows(statement_rows)))
+    else:
+        for row_payload in rows_payload:
+            if not isinstance(row_payload, dict):
+                return jsonify({"error": "Invalid save payload."}), 400
+            selected = row_payload.get("selected", True)
+            if not isinstance(selected, bool):
+                return jsonify({"error": "Invalid save payload."}), 400
+            if not selected:
+                continue
+            selected_count += 1
 
-        date = _coerce_save_field(row_payload, "date")
-        merchant_item = _coerce_save_field(row_payload, "merchant_item")
-        amount = _coerce_save_field(row_payload, "amount")
+            date = _coerce_save_field(row_payload, "date")
+            merchant_item = _coerce_save_field(row_payload, "merchant_item")
+            amount = _coerce_save_field(row_payload, "amount")
 
-        if date is None or merchant_item is None or amount is None:
-            return jsonify({"error": "Invalid save payload."}), 400
-        if not any((date, merchant_item, amount)):
-            return jsonify({"error": "At least one selected row is required."}), 400
+            if date is None or merchant_item is None or amount is None:
+                return jsonify({"error": "Invalid save payload."}), 400
+            if not any((date, merchant_item, amount)):
+                return jsonify({"error": "At least one selected row is required."}), 400
 
-        rows_to_save.append(ExpenseRow(date=date, merchant_item=merchant_item, amount=amount))
+            rows_to_save.append(ExpenseRow(date=date, merchant_item=merchant_item, amount=amount))
 
     if selected_count == 0:
         return jsonify({"error": "At least one selected row is required."}), 400
@@ -133,6 +173,38 @@ def _normalize_expense_rows(rows: object) -> list[ExpenseRow]:
             continue
         raise TypeError("Unexpected expense row value.")
     return normalized_rows
+
+
+def _normalize_statement_rows(rows: object) -> list[StatementImportRow]:
+    if not isinstance(rows, list):
+        raise TypeError("Unexpected statement row collection.")
+    normalized: list[StatementImportRow] = []
+    for row in rows:
+        if isinstance(row, StatementImportRow):
+            normalized.append(row)
+            continue
+        raise TypeError("Unexpected statement row value.")
+    return normalized
+
+
+def _coerce_statement_save_field(payload: object, field: str) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    value = payload.get(field)
+    if value is None or not isinstance(value, str):
+        return None
+    return value.strip()
+
+
+def _statement_rows_to_expense_rows(rows: list[StatementImportRow]) -> list[ExpenseRow]:
+    return [
+        ExpenseRow(
+            date=row.transaction_time,
+            merchant_item=f"{row.counterparty} | {row.direction}",
+            amount=row.amount,
+        )
+        for row in rows
+    ]
 
 
 def _extract_save_rows_payload(payload: object) -> list[object] | None:

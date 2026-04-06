@@ -10,6 +10,7 @@ import zipfile
 import sysconfig
 
 import pytest
+from openpyxl import Workbook
 
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
@@ -18,6 +19,12 @@ from packaging.utils import canonicalize_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture()
+def client(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    return app.test_client()
 
 
 def test_index_page_contains_review_table_container():
@@ -883,6 +890,35 @@ def test_extract_endpoint_returns_json_for_ocr_failures(tmp_path, monkeypatch):
     assert response.get_json() == {"error": "OCR extraction failed."}
 
 
+def test_import_statement_returns_normalized_rows(client):
+    response = client.post(
+        "/api/import-statement",
+        data={"statement_file": (io.BytesIO(_wechat_fixture_bytes()), "wechat.xlsx")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {
+            "transaction_time": "2026-03-29 18:44:00",
+            "counterparty": "叫了个炸鸡",
+            "direction": "支出",
+            "amount": "26.50",
+        }
+    ]
+
+
+def test_import_statement_rejects_unsupported_files(client):
+    response = client.post(
+        "/api/import-statement",
+        data={"statement_file": (io.BytesIO(b"bad"), "bad.txt")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Unsupported or ambiguous statement file."
+
+
 def test_save_endpoint_persists_selected_rows(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -958,6 +994,32 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
     ]
 
 
+def test_save_endpoint_persists_selected_statement_rows(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "transaction_time": "2026-03-29 18:44:00",
+                    "counterparty": "叫了个炸鸡",
+                    "direction": "支出",
+                    "amount": "26.50",
+                    "selected": True,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {"date": "2026-03-29 18:44:00", "merchant_item": "叫了个炸鸡 | 支出", "amount": "26.50"}
+    ]
+
+
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -1016,6 +1078,21 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
     assert response.get_json()["rows"] == [
         {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
     ]
+
+
+def _wechat_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细", "2026-04-06"])
+    worksheet.append(["账单说明", "微信支付账单明细"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
+    worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", 26.5])
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def test_create_app_uses_default_excel_path_without_override():
