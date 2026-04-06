@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from csv import reader as csv_reader
 from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from io import BytesIO, StringIO
 from xml.etree import ElementTree as ET
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 from expense_record.models import StatementImportRow
 
@@ -37,6 +37,7 @@ ALIPAY_SOURCE_MARKERS = ("电子客户回单", "电子回单", "支付宝支付�
 XML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+PARSE_ERROR_TYPES = (UnicodeDecodeError, BadZipFile, ET.ParseError, InvalidOperation, IndexError, KeyError)
 
 
 def detect_statement_source(filename: str, raw_bytes: bytes) -> str:
@@ -50,8 +51,8 @@ def detect_statement_source(filename: str, raw_bytes: bytes) -> str:
             return "alipay"
     except UnsupportedStatementFileError:
         raise
-    except Exception:
-        pass
+    except PARSE_ERROR_TYPES:
+        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
@@ -64,8 +65,8 @@ def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImpo
             return _import_alipay_rows(raw_bytes)
     except UnsupportedStatementFileError:
         raise
-    except Exception:
-        pass
+    except PARSE_ERROR_TYPES:
+        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
@@ -74,15 +75,16 @@ def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_ROW)
     rows: list[StatementImportRow] = []
     for row in sheet_rows[header_index + 1 :]:
-        if not any(cell.strip() for cell in row):
+        normalized_row = _normalize_trailing_empty_cells(row)
+        if _should_skip_wechat_row(normalized_row):
             continue
-        _require_exact_row_shape(row, WECHAT_HEADER_POSITIONS[-1] + 1)
+        _require_exact_row_shape(normalized_row, len(WECHAT_HEADER_ROW))
         rows.append(
             StatementImportRow(
-                transaction_time=_normalize_statement_time(row[WECHAT_HEADER_POSITIONS[0]]),
-                counterparty=row[WECHAT_HEADER_POSITIONS[1]].strip(),
-                direction=row[WECHAT_HEADER_POSITIONS[2]].strip(),
-                amount=_normalize_amount(row[WECHAT_HEADER_POSITIONS[3]]),
+                transaction_time=_normalize_statement_time(normalized_row[0]),
+                counterparty=normalized_row[2],
+                direction=normalized_row[4],
+                amount=_normalize_amount(normalized_row[5]),
             )
         )
     return rows
@@ -93,15 +95,16 @@ def _import_alipay_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_ROW)
     rows: list[StatementImportRow] = []
     for row in csv_rows[header_index + 1 :]:
-        if not any(cell.strip() for cell in row):
+        normalized_row = _normalize_trailing_empty_cells(row)
+        if _should_skip_alipay_row(normalized_row):
             continue
-        _require_row_shape_with_optional_trailing_empty(row, len(ALIPAY_HEADER_ROW))
+        _require_row_shape_with_optional_trailing_empty(normalized_row, len(ALIPAY_HEADER_ROW))
         rows.append(
             StatementImportRow(
-                transaction_time=row[ALIPAY_HEADER_POSITIONS[0]].strip(),
-                counterparty=row[ALIPAY_HEADER_POSITIONS[1]].strip(),
-                direction=row[ALIPAY_HEADER_POSITIONS[2]].strip(),
-                amount=_normalize_amount(row[ALIPAY_HEADER_POSITIONS[3]]),
+                transaction_time=normalized_row[0],
+                counterparty=normalized_row[2],
+                direction=normalized_row[5],
+                amount=_normalize_amount(normalized_row[6]),
             )
         )
     return rows
@@ -133,6 +136,40 @@ def _normalize_trailing_empty_cells(row: list[str]) -> list[str]:
     while normalized and normalized[-1].strip() == "":
         normalized.pop()
     return [cell.strip() for cell in normalized]
+
+
+def _should_skip_wechat_row(row: list[str]) -> bool:
+    if not row:
+        return True
+    if len(row) < len(WECHAT_HEADER_ROW):
+        return True
+    return not _looks_like_wechat_transaction_row(row)
+
+
+def _should_skip_alipay_row(row: list[str]) -> bool:
+    if not row:
+        return True
+    if len(row) < len(ALIPAY_HEADER_ROW):
+        return True
+    return not _looks_like_alipay_transaction_row(row)
+
+
+def _looks_like_wechat_transaction_row(row: list[str]) -> bool:
+    if len(row) < len(WECHAT_HEADER_ROW):
+        return False
+    if row[2] == "":
+        return False
+    if row[4] not in {"支出", "收入", "中性交易", "不计收支"}:
+        return False
+    return _looks_like_excel_serial(row[0])
+
+
+def _looks_like_alipay_transaction_row(row: list[str]) -> bool:
+    if len(row) < len(ALIPAY_HEADER_ROW):
+        return False
+    if row[5] not in {"支出", "收入", "中性交易", "不计收支"}:
+        return False
+    return bool(row[0]) and ":" in row[0]
 
 
 def _normalize_statement_time(value: str) -> str:

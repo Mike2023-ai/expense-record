@@ -98,6 +98,44 @@ def test_import_statement_rows_normalizes_alipay_rows():
     ]
 
 
+def test_import_statement_rows_skips_wechat_footer_row_after_detail_table():
+    rows = import_statement_rows("wechat.xlsx", _wechat_with_footer_fixture_bytes())
+
+    assert rows == [
+        StatementImportRow(
+            transaction_time="2026-03-29 18:44:00",
+            counterparty="叫了个炸鸡",
+            direction="支出",
+            amount="26.50",
+        ),
+        StatementImportRow(
+            transaction_time="2026-03-29 18:41:00",
+            counterparty="商户_沈菊",
+            direction="支出",
+            amount="10.00",
+        ),
+    ]
+
+
+def test_import_statement_rows_skips_alipay_footer_row_after_detail_table():
+    rows = import_statement_rows("alipay.csv", _alipay_with_footer_fixture_bytes())
+
+    assert rows == [
+        StatementImportRow(
+            transaction_time="2026-04-03 18:40:31",
+            counterparty="淘宝闪购",
+            direction="支出",
+            amount="25.40",
+        ),
+        StatementImportRow(
+            transaction_time="2026-04-05 04:08:45",
+            counterparty="中欧基金管理有限公司",
+            direction="不计收支",
+            amount="0.02",
+        ),
+    ]
+
+
 def test_import_statement_rows_rejects_unsupported_file():
     with pytest.raises(UnsupportedStatementFileError):
         import_statement_rows("notes.txt", b"not a statement")
@@ -148,6 +186,23 @@ def _wechat_fixture_bytes() -> bytes:
     worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
     worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", 26.5])
     worksheet.append([46110.77847222222, "支付", "商户_沈菊", "早餐", "支出", 10])
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _wechat_with_footer_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细", "2026-04-06"])
+    worksheet.append(["账单说明", "微信支付账单明细"])
+    worksheet.append([])
+    worksheet.append(["交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)"])
+    worksheet.append([46110.78055555555, "支付", "叫了个炸鸡", "晚餐", "支出", 26.5])
+    worksheet.append([46110.77847222222, "支付", "商户_沈菊", "早餐", "支出", 10])
+    worksheet.append(["共2笔"])
 
     buffer = BytesIO()
     workbook.save(buffer)
@@ -206,6 +261,17 @@ def _alipay_fixture_bytes() -> bytes:
         "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
         "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001,202604030001A,外卖\n"
         "2026-04-05 04:08:45,理财,中欧基金管理有限公司,支付宝账户,基金,不计收支,0.02,余额宝,成功,202604050001,202604050001A,基金\n"
+    ).encode("gb18030")
+
+
+def _alipay_with_footer_fixture_bytes() -> bytes:
+    return (
+        "支付宝支付科技有限公司\n"
+        "账单说明,支付宝账户\n"
+        "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001,202604030001A,外卖\n"
+        "2026-04-05 04:08:45,理财,中欧基金管理有限公司,支付宝账户,基金,不计收支,0.02,余额宝,成功,202604050001,202604050001A,基金\n"
+        "共2笔\n"
     ).encode("gb18030")
 
 
