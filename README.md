@@ -36,6 +36,15 @@ Saved rows go to `~/.expense-screenshot-tool/expenses.xlsx` by default. Override
 export EXPENSE_RECORD_EXCEL_PATH=/absolute/path/to/expenses.xlsx
 ```
 
+## Import statement files
+
+The web app also supports:
+
+- WeChat `.xlsx` statement exports
+- Alipay `.csv` statement exports
+
+Upload one file, review the imported rows, uncheck anything you do not want, then save the selected rows.
+
 ## Test
 
 ```bash

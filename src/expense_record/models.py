@@ -15,3 +15,19 @@ class ExpenseRow:
             "merchant_item": self.merchant_item,
             "amount": self.amount,
         }
+
+
+@dataclass(slots=True)
+class StatementImportRow:
+    transaction_time: str = ""
+    counterparty: str = ""
+    direction: str = ""
+    amount: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "transaction_time": self.transaction_time,
+            "counterparty": self.counterparty,
+            "direction": self.direction,
+            "amount": self.amount,
+        }
