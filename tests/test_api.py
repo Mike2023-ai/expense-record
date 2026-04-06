@@ -93,7 +93,7 @@ def test_index_page_shows_app_version():
     assert f"Version {expected_version}".encode() in response.data
 
 
-def test_frontend_ignores_stale_selection_work_and_resets_save_state():
+def test_frontend_statement_mode_selection_import_save_and_stale_responses():
     script = textwrap.dedent(
         """
         const fs = require("fs");
@@ -189,6 +189,7 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
         }
 
         const pendingExtractResponses = [];
+        const pendingImportResponses = [];
         const pendingSaveResponses = [];
         const fetchCalls = [];
 
@@ -219,6 +220,11 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
             if (url === "/api/extract") {
               return await new Promise((resolve) => {
                 pendingExtractResponses.push(resolve);
+              });
+            }
+            if (url === "/api/import-statement") {
+              return await new Promise((resolve) => {
+                pendingImportResponses.push(resolve);
               });
             }
             if (url === "/api/save") {
@@ -309,6 +315,23 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           return event;
         }
 
+        function selectStatement(name) {
+          elements["statement-file-input"].listeners.change({
+            target: {
+              files: [
+                {
+                  name,
+                  type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                },
+              ],
+            },
+          });
+        }
+
+        function clickImportStatement() {
+          elements["import-statement-button"].listeners.click();
+        }
+
         function flush() {
           return new Promise((resolve) => setImmediate(resolve));
         }
@@ -320,110 +343,148 @@ def test_frontend_ignores_stale_selection_work_and_resets_save_state():
           assert.strictEqual(elements["save-button"].disabled, true);
           assert.strictEqual(fileReaderInstances.length, 1);
 
-          extractHandler();
-          selectScreenshot("second.png");
-
-          fileReaderInstances[0].result = "data:first";
-          fileReaderInstances[0].onload();
-          await flush();
-          assert.strictEqual(elements["preview-image"].src, "");
-          assert.strictEqual(elements["preview-caption"].textContent, "second.png");
+          selectStatement("wechat.xlsx");
+          assert.strictEqual(elements["preview-caption"].textContent, "No screenshot selected yet.");
+          assert.strictEqual(elements["preview-image"].hidden, true);
+          assert.strictEqual(elements["extract-button"].disabled, true);
+          assert.strictEqual(elements["import-statement-button"].disabled, false);
           assert.deepStrictEqual(elements["review-body"].children, []);
           assert.strictEqual(elements["save-button"].disabled, true);
-
-          assert.strictEqual(fileReaderInstances.length, 2);
-
-          const firstPendingExtract = pendingExtractResponses.shift();
-          firstPendingExtract(makeResponse([{ date: "2026-03-30", merchant_item: "old", amount: "1.00" }]));
-          await flush();
-          assert.deepStrictEqual(elements["review-body"].children, []);
-          assert.strictEqual(elements["save-button"].disabled, true);
-
-          extractHandler();
-          const secondPendingExtract = pendingExtractResponses.shift();
-          secondPendingExtract(
-            makeResponse(
-              [
-                { date: "2026-03-31", merchant_item: "new", amount: "2.00" },
-                { date: "2026-04-01", merchant_item: "skip", amount: "3.00" },
-              ],
-              ["2026-03-31", "new", "2.00"]
-            )
-          );
-          await flush();
-
-          fileReaderInstances[1].result = "data:second";
-          fileReaderInstances[1].onload();
-          await flush();
-
-          assert.strictEqual(elements["preview-image"].src, "data:second");
-          assert.strictEqual(elements["review-body"].children.length, 2);
-          const firstRow = elements["review-body"].children[0];
-          const secondRow = elements["review-body"].children[1];
-          assert.strictEqual(firstRow.children[0].children[0].checked, true);
-          assert.strictEqual(firstRow.children[1].children[0].value, "2026-03-31");
-          assert.strictEqual(firstRow.children[2].children[0].value, "new");
-          assert.strictEqual(firstRow.children[3].children[0].value, "2.00");
-          assert.strictEqual(secondRow.children[2].children[0].value, "skip");
-          assert.strictEqual(elements["save-button"].disabled, false);
-          assert.strictEqual(elements["extract-button"].disabled, false);
-          assert.strictEqual(elements["ocr-lines-panel"].hidden, false);
-          assert.deepStrictEqual(
-            elements["ocr-lines-list"].children.map((child) => child.textContent),
-            ["2026-03-31", "new", "2.00"]
-          );
-          assert.ok(fetchCalls.some((call) => call.url === "/api/rows"));
-
-          const imagePasteEvent = pasteImage("clipboard.png");
-          assert.strictEqual(imagePasteEvent.defaultPrevented, true);
-          assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
-          assert.strictEqual(fileReaderInstances.length, 3);
-
-          fileReaderInstances[2].result = "data:clipboard";
-          fileReaderInstances[2].onload();
-          await flush();
-          assert.strictEqual(elements["preview-image"].src, "data:clipboard");
-
-          const inputPasteEvent = pasteTextIntoInput(firstRow.children[1].children[0]);
-          assert.strictEqual(inputPasteEvent.defaultPrevented, false);
-          assert.strictEqual(elements["preview-caption"].textContent, "clipboard.png");
-          assert.strictEqual(elements["preview-image"].src, "data:clipboard");
-          assert.strictEqual(fileReaderInstances.length, 3);
-
-          selectScreenshot("third.png");
           assert.strictEqual(elements["ocr-lines-panel"].hidden, true);
           assert.deepStrictEqual(elements["ocr-lines-list"].children, []);
-          extractHandler();
-          const thirdPendingExtract = pendingExtractResponses.shift();
-          thirdPendingExtract(makeResponse([], ["OCR returned no usable fields."], "OCR returned no usable fields."));
+
+          clickImportStatement();
+          assert.strictEqual(elements["import-statement-button"].disabled, true);
+          assert.strictEqual(fetchCalls.at(-1).url, "/api/import-statement");
+
+          pendingImportResponses.shift()({
+            ok: true,
+            json: async () => ({
+              rows: [
+                {
+                  transaction_time: "2026-03-29 18:44:00",
+                  counterparty: "叫了个炸鸡",
+                  direction: "支出",
+                  amount: "26.50",
+                },
+                {
+                  transaction_time: "2026-03-29 18:41:00",
+                  counterparty: "商户_沈菊",
+                  direction: "支出",
+                  amount: "10.00",
+                },
+              ],
+            }),
+          });
           await flush();
 
-          assert.strictEqual(elements["status-message"].textContent, "OCR returned no usable fields.");
-          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
-          assert.strictEqual(elements["save-button"].disabled, true);
+          assert.deepStrictEqual(
+            elements["review-header"].children.map((child) => child.textContent),
+            ["Use", "Transaction Time", "Counterparty", "Direction", "Amount"]
+          );
+          assert.strictEqual(elements["review-body"].children.length, 2);
+          assert.strictEqual(elements["review-body"].children[0].children[1].children[0].value, "2026-03-29 18:44:00");
+          assert.strictEqual(elements["review-body"].children[0].children[2].children[0].value, "叫了个炸鸡");
+          assert.strictEqual(elements["review-body"].children[0].children[3].children[0].value, "支出");
+          assert.strictEqual(elements["review-body"].children[0].children[4].children[0].value, "26.50");
+          assert.strictEqual(elements["save-button"].disabled, false);
+          assert.strictEqual(elements["import-statement-button"].disabled, false);
+          assert.strictEqual(elements["status-message"].textContent, "Statement imported. Review the rows before saving.");
 
-          extractHandler();
-          const fourthPendingExtract = pendingExtractResponses.shift();
-          fourthPendingExtract(makeResponse([{ date: "04-02", merchant_item: "save-me", amount: "6.00" }], ["04-02", "save-me", "6.00"]));
-          await flush();
-
-          const savedRow = elements["review-body"].children[0];
-          savedRow.children[1].children[0].value = "04-03";
-          savedRow.children[0].children[0].checked = true;
           elements["save-button"].listeners.click();
           const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
           assert.deepStrictEqual(JSON.parse(saveCall.options.body), {
-            mode: "image",
-            rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00", selected: true }],
+            mode: "statement",
+            rows: [
+              {
+                selected: true,
+                transaction_time: "2026-03-29 18:44:00",
+                counterparty: "叫了个炸鸡",
+                direction: "支出",
+                amount: "26.50",
+              },
+              {
+                selected: true,
+                transaction_time: "2026-03-29 18:41:00",
+                counterparty: "商户_沈菊",
+                direction: "支出",
+                amount: "10.00",
+              },
+            ],
           });
           pendingSaveResponses.shift()({
             ok: true,
-            json: async () => ({ rows: [{ date: "04-03", merchant_item: "save-me", amount: "6.00" }] }),
+            json: async () => ({
+              rows: [
+                {
+                  date: "2026-03-29 18:44:00",
+                  merchant_item: "叫了个炸鸡 | 支出",
+                  amount: "26.50",
+                },
+                {
+                  date: "2026-03-29 18:41:00",
+                  merchant_item: "商户_沈菊 | 支出",
+                  amount: "10.00",
+                },
+              ],
+            }),
           });
           await flush();
           assert.strictEqual(elements["status-message"].textContent, "Rows saved to Excel.");
           assert.strictEqual(elements["review-body"].children.length, 0);
           assert.strictEqual(elements["save-button"].disabled, true);
+
+          selectStatement("alipay.csv");
+          clickImportStatement();
+          pendingImportResponses.shift()({
+            ok: false,
+            json: async () => ({ error: "Statement import failed from API." }),
+          });
+          await flush();
+          assert.strictEqual(elements["status-message"].textContent, "Statement import failed from API.");
+          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+          assert.strictEqual(elements["save-button"].disabled, true);
+          assert.deepStrictEqual(elements["review-body"].children, []);
+
+          selectStatement("wechat-stale.xlsx");
+          clickImportStatement();
+          selectStatement("wechat-fresh.xlsx");
+          clickImportStatement();
+
+          const staleImport = pendingImportResponses.shift();
+          const freshImport = pendingImportResponses.shift();
+          staleImport({
+            ok: true,
+            json: async () => ({
+              rows: [
+                {
+                  transaction_time: "2026-04-01 10:00:00",
+                  counterparty: "过期",
+                  direction: "支出",
+                  amount: "1.00",
+                },
+              ],
+            }),
+          });
+          await flush();
+          assert.strictEqual(elements["review-body"].children.length, 0);
+          freshImport({
+            ok: true,
+            json: async () => ({
+              rows: [
+                {
+                  transaction_time: "2026-04-03 18:40:31",
+                  counterparty: "淘宝闪购",
+                  direction: "支出",
+                  amount: "25.40",
+                },
+              ],
+            }),
+          });
+          await flush();
+          assert.strictEqual(elements["review-body"].children.length, 1);
+          assert.strictEqual(elements["review-body"].children[0].children[2].children[0].value, "淘宝闪购");
+          assert.strictEqual(elements["save-button"].disabled, false);
         }
 
         main().catch((error) => {
@@ -619,105 +680,36 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
     subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
 
 
-def test_frontend_exposes_statement_import_controls():
-    script = textwrap.dedent(
-        """
-        const fs = require("fs");
-        const vm = require("vm");
-        const path = require("path");
-        const assert = require("assert");
-
-        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
-
-        function makeElement(id) {
-          return {
-            id,
-            disabled: false,
-            hidden: false,
-            value: "",
-            checked: false,
-            textContent: "",
-            innerHTML: "",
-            className: "",
-            type: "",
-            src: "",
-            style: {},
-            listeners: {},
-            children: [],
-            addEventListener(type, handler) {
-              this.listeners[type] = handler;
-            },
-            appendChild(child) {
-              this.children.push(child);
-            },
-            removeChild(child) {
-              const index = this.children.indexOf(child);
-              if (index >= 0) {
-                this.children.splice(index, 1);
-              }
-              return child;
-            },
-            removeAttribute(name) {
-              if (name === "src") {
-                this.src = "";
-              }
-            },
-          };
-        }
-
-        const elements = {
-          "file-input": makeElement("file-input"),
-          "paste-zone": makeElement("paste-zone"),
-          "preview-image": makeElement("preview-image"),
-          "preview-caption": makeElement("preview-caption"),
-          "statement-file-input": makeElement("statement-file-input"),
-          "import-statement-button": makeElement("import-statement-button"),
-          "ocr-lines-panel": makeElement("ocr-lines-panel"),
-          "ocr-lines-list": makeElement("ocr-lines-list"),
-          "extract-button": makeElement("extract-button"),
-          "save-button": makeElement("save-button"),
-          "status-message": makeElement("status-message"),
-          "review-table": makeElement("review-table"),
-          "review-header": makeElement("review-header"),
-          "review-body": makeElement("review-body"),
-          "records-body": makeElement("records-body"),
-        };
-
-        const sandbox = {
-          console,
-          process,
-          FileReader: class {
-            readAsDataURL() {}
-          },
-          File: class {},
-          FormData: class {
-            append() {}
-          },
-          fetch: async () => ({ ok: true, json: async () => ({ rows: [] }) }),
-          document: {
-            addEventListener() {},
-            getElementById(id) {
-              return elements[id];
-            },
-            createElement(tag) {
-              const element = makeElement(`created-${String(tag).toLowerCase()}`);
-              element.tagName = String(tag).toUpperCase();
-              element.colSpan = 0;
-              return element;
-            },
-          },
-        };
-        sandbox.window = sandbox;
-        sandbox.globalThis = sandbox;
-
-        vm.runInNewContext(source, sandbox, { filename: "app.js" });
-
-        assert.ok(elements["statement-file-input"]);
-        assert.ok(elements["import-statement-button"]);
-        """
+def test_imported_wechat_rows_can_be_saved(client):
+    response = client.post(
+        "/api/import-statement",
+        data={"statement_file": (io.BytesIO(_wechat_fixture_bytes()), "wechat.xlsx")},
+        content_type="multipart/form-data",
     )
 
-    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+    assert response.status_code == 200
+    rows = response.get_json()["rows"]
+
+    save_response = client.post("/api/save", json={"mode": "statement", "rows": rows})
+
+    assert save_response.status_code == 200
+    assert any("叫了个炸鸡" in row["merchant_item"] for row in save_response.get_json()["rows"])
+
+
+def test_imported_alipay_statement_rows_can_be_saved(client):
+    response = client.post(
+        "/api/import-statement",
+        data={"statement_file": (io.BytesIO(_alipay_fixture_bytes()), "alipay.csv")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    rows = response.get_json()["rows"]
+
+    save_response = client.post("/api/save", json={"mode": "statement", "rows": rows})
+
+    assert save_response.status_code == 200
+    assert any("淘宝闪购" in row["merchant_item"] for row in save_response.get_json()["rows"])
 
 
 def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
@@ -1283,6 +1275,15 @@ def _wechat_fixture_bytes() -> bytes:
     buffer = io.BytesIO()
     workbook.save(buffer)
     return buffer.getvalue()
+
+
+def _alipay_fixture_bytes() -> bytes:
+    return (
+        "支付宝支付科技有限公司\n"
+        "账单说明,支付宝账户\n"
+        "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001,202604030001A,外卖\n"
+    ).encode("gb18030")
 
 
 def test_create_app_uses_default_excel_path_without_override():
