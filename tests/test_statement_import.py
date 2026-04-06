@@ -81,6 +81,44 @@ def test_import_statement_rows_normalizes_wechat_rows():
     ]
 
 
+def test_import_statement_rows_normalizes_realistic_wechat_export_shape():
+    rows = import_statement_rows("wechat.xlsx", _wechat_real_header_fixture_bytes())
+
+    assert rows == [
+        StatementImportRow(
+            transaction_time="2026-03-31 08:28:10",
+            counterparty="刘记钢材丨通州湾",
+            direction="支出",
+            amount="7.00",
+        ),
+        StatementImportRow(
+            transaction_time="2026-03-30 08:31:56",
+            counterparty="累了，王前花，小吃",
+            direction="支出",
+            amount="5.00",
+        ),
+    ]
+
+
+def test_import_statement_rows_skips_wechat_refund_status_rows():
+    rows = import_statement_rows("wechat.xlsx", _wechat_refund_status_fixture_bytes())
+
+    assert rows == [
+        StatementImportRow(
+            transaction_time="2026-03-29 18:44:00",
+            counterparty="叫了个炸鸡",
+            direction="支出",
+            amount="26.50",
+        ),
+        StatementImportRow(
+            transaction_time="2026-03-29 18:41:00",
+            counterparty="商户_沈菊",
+            direction="支出",
+            amount="10.00",
+        ),
+    ]
+
+
 def test_import_statement_rows_normalizes_alipay_rows():
     rows = import_statement_rows("alipay.csv", _alipay_fixture_bytes())
 
@@ -96,6 +134,25 @@ def test_import_statement_rows_normalizes_alipay_rows():
             counterparty="中欧基金管理有限公司",
             direction="不计收支",
             amount="0.02",
+        ),
+    ]
+
+
+def test_import_statement_rows_normalizes_realistic_alipay_export_shape():
+    rows = import_statement_rows("alipay.csv", _alipay_real_header_fixture_bytes())
+
+    assert rows == [
+        StatementImportRow(
+            transaction_time="2026-04-05 04:08:45",
+            counterparty="中欧基金管理有限公司",
+            direction="不计收支",
+            amount="0.02",
+        ),
+        StatementImportRow(
+            transaction_time="2026-04-03 18:40:31",
+            counterparty="淘宝闪购",
+            direction="支出",
+            amount="25.40",
         ),
     ]
 
@@ -245,6 +302,137 @@ def _wechat_fixture_bytes() -> bytes:
     return buffer.getvalue()
 
 
+def _wechat_real_header_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细"])
+    worksheet.append(["导出时间", "2026-04-06"])
+    worksheet.append(["----------------------微信支付账单明细列表--------------------"])
+    worksheet.append(
+        [
+            "交易时间",
+            "交易类型",
+            "交易对方",
+            "商品",
+            "收/支",
+            "金额(元)",
+            "支付方式",
+            "当前状态",
+            "交易单号",
+            "商户单号",
+            "备注",
+        ]
+    )
+    worksheet.append(
+        [
+            46112.35289351852,
+            "扫二维码付款",
+            "刘记钢材丨通州湾",
+            "收款方备注:二维码收款",
+            "支出",
+            "7",
+            "中国银行储蓄卡(0453)",
+            "已转账",
+            "53110001469164202603313597977923",
+            "10001073012026033100962578298067",
+            "/",
+        ]
+    )
+    worksheet.append(
+        [
+            46111.35550925926,
+            "扫二维码付款",
+            "累了，王前花，小吃",
+            "收款方备注:二维码收款",
+            "支出",
+            "5",
+            "中国银行储蓄卡(7188)",
+            "已转账",
+            "53110001470032202603300592217773",
+            "10001073012026033000362269775191",
+            "/",
+        ]
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _wechat_refund_status_fixture_bytes() -> bytes:
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "微信账单"
+    worksheet.append(["微信支付账单明细"])
+    worksheet.append(["导出时间", "2026-04-06"])
+    worksheet.append(["----------------------微信支付账单明细列表--------------------"])
+    worksheet.append(
+        [
+            "交易时间",
+            "交易类型",
+            "交易对方",
+            "商品",
+            "收/支",
+            "金额(元)",
+            "支付方式",
+            "当前状态",
+            "交易单号",
+            "商户单号",
+            "备注",
+        ]
+    )
+    worksheet.append(
+        [
+            46110.78055555555,
+            "商户消费",
+            "叫了个炸鸡",
+            "美团收银909700210917833777",
+            "支出",
+            "26.5",
+            "中信银行信用卡(1709)",
+            "支付成功",
+            "4200003040202603292690038965",
+            "0461368606473567868807150",
+            "/",
+        ]
+    )
+    worksheet.append(
+        [
+            46096.44118055556,
+            "商户消费",
+            "抖音电商商家",
+            "/",
+            "支出",
+            "401",
+            "零钱",
+            "已退款(¥398.00)",
+            "4200000000000000000000000000",
+            "mock-merchant-order",
+            "/",
+        ]
+    )
+    worksheet.append(
+        [
+            46110.77847222222,
+            "商户消费",
+            "商户_沈菊",
+            "付款码支付",
+            "支出",
+            "10",
+            "中信银行信用卡(1709)",
+            "支付成功",
+            "4200003071202603299937870599",
+            "20260329184103346000061W",
+            "/",
+        ]
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 def _wechat_with_footer_fixture_bytes() -> bytes:
     workbook = Workbook()
     worksheet = workbook.active
@@ -387,7 +575,17 @@ def _alipay_shortened_transaction_fixture_bytes() -> bytes:
         "支付宝支付科技有限公司\n"
         "账单说明,支付宝账户\n"
         "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注\n"
-        "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出,25.4,余额宝,成功,202604030001\n"
+        "2026-04-03 18:40:31,消费,淘宝闪购,支付宝账户,外卖,支出\n"
+    ).encode("gb18030")
+
+
+def _alipay_real_header_fixture_bytes() -> bytes:
+    return (
+        "------------------------支付宝支付科技有限公司  电子客户回单------------------------\n"
+        "账单说明,支付宝账户\n"
+        "交易时间,交易分类,交易对方,对方账号,商品说明,收/支,金额,收/付款方式,交易状态,交易订单号,商家订单号,备注,\n"
+        "2026-04-05 04:08:45,投资理财,中欧基金管理有限公司,/,余额宝-2026.04.04-收益发放,不计收支,0.02,余额宝,交易成功,20260405308428195141\\t,\\t,,\n"
+        "2026-04-03 18:40:31,餐饮美食,淘宝闪购,e50***@alibaba-inc.com,隆江猪脚饭(鑫凯隆购物中心店)外卖订单,支出,25.40,招联消金信用购,交易成功,2026040323001113141424091931\\t,13180600726040396248521892229\\t,,\n"
     ).encode("gb18030")
 
 

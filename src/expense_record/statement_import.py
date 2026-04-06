@@ -15,21 +15,26 @@ class UnsupportedStatementFileError(ValueError):
     pass
 
 
-WECHAT_HEADER_ROW = ("交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)")
-ALIPAY_HEADER_ROW = (
-    "交易时间",
-    "交易分类",
-    "交易对方",
-    "对方账号",
-    "商品说明",
-    "收/支",
-    "金额",
-    "收/付款方式",
-    "交易状态",
-    "交易订单号",
-    "商家订单号",
-    "备注",
-)
+WECHAT_HEADER_FIELDS = {
+    "transaction_time": ("交易时间",),
+    "transaction_type": ("交易类型",),
+    "counterparty": ("交易对方",),
+    "product": ("商品", "商品说明"),
+    "direction": ("收/支",),
+    "amount": ("金额(元)",),
+}
+WECHAT_OPTIONAL_HEADER_FIELDS = {
+    "status": ("当前状态",),
+}
+ALIPAY_HEADER_FIELDS = {
+    "transaction_time": ("交易时间",),
+    "transaction_type": ("交易分类",),
+    "counterparty": ("交易对方",),
+    "account": ("对方账号",),
+    "product": ("商品说明",),
+    "direction": ("收/支",),
+    "amount": ("金额",),
+}
 WECHAT_SOURCE_MARKERS = ("微信支付账单明细",)
 ALIPAY_SOURCE_MARKERS = ("电子客户回单", "电子回单", "支付宝支付科技有限公司")
 
@@ -79,23 +84,30 @@ def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImpo
 
 def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     sheet_rows = _read_xlsx_rows(raw_bytes)
-    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_ROW)
+    header_index, header_map = _find_header_row(
+        sheet_rows,
+        WECHAT_HEADER_FIELDS,
+        optional_fields=WECHAT_OPTIONAL_HEADER_FIELDS,
+    )
     rows: list[StatementImportRow] = []
     for row in sheet_rows[header_index + 1 :]:
         normalized_row = _normalize_trailing_empty_cells(row)
         if _is_empty_row(normalized_row):
             continue
-        if len(normalized_row) < len(WECHAT_HEADER_ROW):
+        required_length = _required_row_length(header_map, ("transaction_time", "counterparty", "direction", "amount"))
+        if len(normalized_row) < required_length:
             if _row_looks_like_wechat_transaction_candidate(normalized_row):
                 raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
             continue
-        _require_exact_row_shape(normalized_row, len(WECHAT_HEADER_ROW))
+        status_index = header_map.get("status")
+        if status_index is not None and status_index < len(normalized_row) and "退款" in normalized_row[status_index]:
+            continue
         rows.append(
             StatementImportRow(
-                transaction_time=_normalize_statement_time(normalized_row[0]),
-                counterparty=normalized_row[2],
-                direction=normalized_row[4],
-                amount=_normalize_amount(normalized_row[5]),
+                transaction_time=_normalize_statement_time(normalized_row[header_map["transaction_time"]]),
+                counterparty=normalized_row[header_map["counterparty"]],
+                direction=normalized_row[header_map["direction"]],
+                amount=_normalize_amount(normalized_row[header_map["amount"]]),
             )
         )
     return rows
@@ -103,47 +115,67 @@ def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
 
 def _import_alipay_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     csv_rows = _read_alipay_csv_rows(raw_bytes)
-    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_ROW)
+    header_index, header_map = _find_header_row(csv_rows, ALIPAY_HEADER_FIELDS)
     rows: list[StatementImportRow] = []
     for row in csv_rows[header_index + 1 :]:
         normalized_row = _normalize_trailing_empty_cells(row)
         if _is_empty_row(normalized_row):
             continue
-        if len(normalized_row) < len(ALIPAY_HEADER_ROW):
+        required_length = _required_row_length(header_map, ("transaction_time", "counterparty", "direction", "amount"))
+        if len(normalized_row) < required_length:
             if _row_looks_like_alipay_transaction_candidate(normalized_row):
                 raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
             continue
-        _require_row_shape_with_optional_trailing_empty(normalized_row, len(ALIPAY_HEADER_ROW))
         rows.append(
             StatementImportRow(
-                transaction_time=_normalize_alipay_statement_time(normalized_row[0]),
-                counterparty=normalized_row[2],
-                direction=normalized_row[5],
-                amount=_normalize_amount(normalized_row[6]),
+                transaction_time=_normalize_alipay_statement_time(normalized_row[header_map["transaction_time"]]),
+                counterparty=normalized_row[header_map["counterparty"]],
+                direction=normalized_row[header_map["direction"]],
+                amount=_normalize_amount(normalized_row[header_map["amount"]]),
             )
         )
     return rows
 
 
-def _find_header_row_index(rows: list[list[str]], header_signature: tuple[str, ...]) -> int:
+def _find_header_row(
+    rows: list[list[str]],
+    header_fields: dict[str, tuple[str, ...]],
+    *,
+    optional_fields: dict[str, tuple[str, ...]] | None = None,
+) -> tuple[int, dict[str, int]]:
     for index, row in enumerate(rows):
-        if _row_matches_signature(row, header_signature):
-            return index
+        header_map = _header_index_map(row, header_fields, optional_fields=optional_fields)
+        if header_map is not None:
+            return index, header_map
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
-def _row_matches_signature(row: list[str], signature: tuple[str, ...]) -> bool:
-    return tuple(_normalize_trailing_empty_cells(row)) == signature
+def _header_index_map(
+    row: list[str],
+    header_fields: dict[str, tuple[str, ...]],
+    *,
+    optional_fields: dict[str, tuple[str, ...]] | None = None,
+) -> dict[str, int] | None:
+    normalized_row = _normalize_trailing_empty_cells(row)
+    index_map: dict[str, int] = {}
+    for field_name, aliases in header_fields.items():
+        for alias in aliases:
+            if alias in normalized_row:
+                index_map[field_name] = normalized_row.index(alias)
+                break
+        else:
+            return None
+    if optional_fields:
+        for field_name, aliases in optional_fields.items():
+            for alias in aliases:
+                if alias in normalized_row:
+                    index_map[field_name] = normalized_row.index(alias)
+                    break
+    return index_map
 
 
-def _require_exact_row_shape(row: list[str], expected_length: int) -> None:
-    if len(row) != expected_length:
-        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
-
-
-def _require_row_shape_with_optional_trailing_empty(row: list[str], expected_length: int) -> None:
-    if len(_normalize_trailing_empty_cells(row)) != expected_length:
-        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
+def _required_row_length(header_map: dict[str, int], fields: tuple[str, ...]) -> int:
+    return max(header_map[field] for field in fields) + 1
 
 
 def _normalize_trailing_empty_cells(row: list[str]) -> list[str]:
@@ -218,13 +250,17 @@ def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:
 
 def _detect_wechat_xlsx_layout(raw_bytes: bytes) -> None:
     sheet_rows = _read_xlsx_rows(raw_bytes)
-    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_ROW)
+    header_index, _ = _find_header_row(
+        sheet_rows,
+        WECHAT_HEADER_FIELDS,
+        optional_fields=WECHAT_OPTIONAL_HEADER_FIELDS,
+    )
     _require_source_marker(sheet_rows[:header_index], WECHAT_SOURCE_MARKERS)
 
 
 def _detect_alipay_csv_layout(raw_bytes: bytes) -> None:
     csv_rows = _read_alipay_csv_rows(raw_bytes)
-    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_ROW)
+    header_index, _ = _find_header_row(csv_rows, ALIPAY_HEADER_FIELDS)
     _require_source_marker(csv_rows[:header_index], ALIPAY_SOURCE_MARKERS)
 
 
