@@ -18,6 +18,8 @@ WECHAT_HEADER_SIGNATURE = ("交易时间", "交易对方", "收/支", "金额(�
 ALIPAY_HEADER_SIGNATURE = ("交易时间", "交易对方", "收/支", "金额")
 WECHAT_HEADER_POSITIONS = (0, 2, 4, 5)
 ALIPAY_HEADER_POSITIONS = (0, 2, 5, 6)
+WECHAT_SOURCE_MARKERS = ("微信支付账单明细",)
+ALIPAY_SOURCE_MARKERS = ("支付宝", "电子回单")
 
 XML_MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 XML_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -160,12 +162,20 @@ def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:
 
 def _detect_wechat_xlsx_layout(raw_bytes: bytes) -> None:
     sheet_rows = _read_xlsx_rows(raw_bytes)
-    _find_header_row_index(sheet_rows, WECHAT_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_SIGNATURE)
+    _require_source_marker(sheet_rows[:header_index], WECHAT_SOURCE_MARKERS)
 
 
 def _detect_alipay_csv_layout(raw_bytes: bytes) -> None:
     csv_rows = _read_alipay_csv_rows(raw_bytes)
-    _find_header_row_index(csv_rows, ALIPAY_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_SIGNATURE)
+    _require_source_marker(csv_rows[:header_index], ALIPAY_SOURCE_MARKERS)
+
+
+def _require_source_marker(rows: list[list[str]], markers: tuple[str, ...]) -> None:
+    haystack = "\n".join(" ".join(cell.strip() for cell in row if cell.strip()) for row in rows)
+    if not haystack or not any(marker in haystack for marker in markers):
+        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
 
 
 def _read_xlsx_rows(raw_bytes: bytes) -> list[list[str]]:
