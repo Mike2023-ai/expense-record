@@ -14,8 +14,21 @@ class UnsupportedStatementFileError(ValueError):
     pass
 
 
-WECHAT_HEADER_SIGNATURE = ("交易时间", "交易对方", "收/支", "金额(元)")
-ALIPAY_HEADER_SIGNATURE = ("交易时间", "交易对方", "收/支", "金额")
+WECHAT_HEADER_ROW = ("交易时间", "交易类型", "交易对方", "商品说明", "收/支", "金额(元)")
+ALIPAY_HEADER_ROW = (
+    "交易时间",
+    "交易分类",
+    "交易对方",
+    "对方账号",
+    "商品说明",
+    "收/支",
+    "金额",
+    "收/付款方式",
+    "交易状态",
+    "交易订单号",
+    "商家订单号",
+    "备注",
+)
 WECHAT_HEADER_POSITIONS = (0, 2, 4, 5)
 ALIPAY_HEADER_POSITIONS = (0, 2, 5, 6)
 WECHAT_SOURCE_MARKERS = ("微信支付账单明细",)
@@ -58,7 +71,7 @@ def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImpo
 
 def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     sheet_rows = _read_xlsx_rows(raw_bytes)
-    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_ROW)
     rows: list[StatementImportRow] = []
     for row in sheet_rows[header_index + 1 :]:
         if not any(cell.strip() for cell in row):
@@ -77,12 +90,12 @@ def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
 
 def _import_alipay_rows(raw_bytes: bytes) -> list[StatementImportRow]:
     csv_rows = _read_alipay_csv_rows(raw_bytes)
-    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_ROW)
     rows: list[StatementImportRow] = []
     for row in csv_rows[header_index + 1 :]:
         if not any(cell.strip() for cell in row):
             continue
-        _require_exact_row_shape(row, ALIPAY_HEADER_POSITIONS[-1] + 1)
+        _require_row_shape_with_optional_trailing_empty(row, len(ALIPAY_HEADER_ROW))
         rows.append(
             StatementImportRow(
                 transaction_time=row[ALIPAY_HEADER_POSITIONS[0]].strip(),
@@ -102,23 +115,24 @@ def _find_header_row_index(rows: list[list[str]], header_signature: tuple[str, .
 
 
 def _row_matches_signature(row: list[str], signature: tuple[str, ...]) -> bool:
-    positions = _header_positions_for_signature(signature)
-    if len(row) != positions[-1] + 1:
-        return False
-    return all(row[position].strip() == expected for position, expected in zip(positions, signature, strict=True))
-
-
-def _header_positions_for_signature(signature: tuple[str, ...]) -> tuple[int, ...]:
-    if signature == WECHAT_HEADER_SIGNATURE:
-        return WECHAT_HEADER_POSITIONS
-    if signature == ALIPAY_HEADER_SIGNATURE:
-        return ALIPAY_HEADER_POSITIONS
-    raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
+    return tuple(_normalize_trailing_empty_cells(row)) == signature
 
 
 def _require_exact_row_shape(row: list[str], expected_length: int) -> None:
     if len(row) != expected_length:
         raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
+
+
+def _require_row_shape_with_optional_trailing_empty(row: list[str], expected_length: int) -> None:
+    if len(_normalize_trailing_empty_cells(row)) != expected_length:
+        raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
+
+
+def _normalize_trailing_empty_cells(row: list[str]) -> list[str]:
+    normalized = list(row)
+    while normalized and normalized[-1].strip() == "":
+        normalized.pop()
+    return [cell.strip() for cell in normalized]
 
 
 def _normalize_statement_time(value: str) -> str:
@@ -162,13 +176,13 @@ def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:
 
 def _detect_wechat_xlsx_layout(raw_bytes: bytes) -> None:
     sheet_rows = _read_xlsx_rows(raw_bytes)
-    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(sheet_rows, WECHAT_HEADER_ROW)
     _require_source_marker(sheet_rows[:header_index], WECHAT_SOURCE_MARKERS)
 
 
 def _detect_alipay_csv_layout(raw_bytes: bytes) -> None:
     csv_rows = _read_alipay_csv_rows(raw_bytes)
-    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_SIGNATURE)
+    header_index = _find_header_row_index(csv_rows, ALIPAY_HEADER_ROW)
     _require_source_marker(csv_rows[:header_index], ALIPAY_SOURCE_MARKERS)
 
 
