@@ -159,6 +159,8 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
           "review-header": makeElement("review-header"),
           "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
         };
         elements["preview-image"].hidden = true;
         const documentListeners = {};
@@ -562,6 +564,8 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
           "review-header": makeElement("review-header"),
           "review-body": makeElement("review-body"),
           "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
         };
         elements["preview-image"].hidden = true;
 
@@ -852,7 +856,7 @@ def test_extract_endpoint_parses_uploaded_image(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}],
+        "rows": [{"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "direction": ""}],
         "lines": ["微信支付", "2026-03-30 18:21", "瑞幸咖啡", "￥23.50"],
     }
 
@@ -882,8 +886,8 @@ def test_extract_endpoint_returns_multiple_rows(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.get_json() == {
         "rows": [
-            {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"},
-            {"date": "03-29", "merchant_item": "扫二维码付款-给早餐", "amount": "5.00"},
+            {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "direction": ""},
+            {"date": "03-29", "merchant_item": "扫二维码付款-给早餐", "amount": "5.00", "direction": ""},
         ],
         "lines": [
             "滴滴出行",
@@ -913,7 +917,7 @@ def test_extract_endpoint_keeps_date_only_row_for_manual_completion(tmp_path, mo
 
     assert response.status_code == 200
     assert response.get_json() == {
-        "rows": [{"date": "03-29", "merchant_item": "", "amount": ""}],
+        "rows": [{"date": "03-29", "merchant_item": "", "amount": "", "direction": ""}],
         "lines": ["3月29日08:42"],
         "warning": "OCR returned incomplete fields.",
     }
@@ -1045,7 +1049,7 @@ def test_save_endpoint_persists_selected_rows(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "direction": ""}
     ]
 
 
@@ -1065,7 +1069,7 @@ def test_save_endpoint_appends_only_checked_rows(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00"}
+        {"date": "03-28", "merchant_item": "滴滴出行", "amount": "28.00", "direction": ""}
     ]
 
 
@@ -1101,7 +1105,7 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "", "merchant_item": "手动补录", "amount": ""}
+        {"date": "", "merchant_item": "手动补录", "amount": "", "direction": ""}
     ]
 
 
@@ -1127,7 +1131,7 @@ def test_save_endpoint_persists_selected_statement_rows(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "2026-03-29 18:44:00", "merchant_item": "叫了个炸鸡 | 支出", "amount": "26.50"}
+        {"date": "2026-03-29 18:44:00", "merchant_item": "叫了个炸鸡", "amount": "26.50", "direction": "支出"}
     ]
 
 
@@ -1258,7 +1262,7 @@ def test_rows_endpoint_lists_saved_rows(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50"}
+        {"date": "2026-03-30", "merchant_item": "瑞幸咖啡", "amount": "23.50", "direction": ""}
     ]
 
 

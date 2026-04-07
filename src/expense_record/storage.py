@@ -11,7 +11,7 @@ from expense_record.models import ExpenseRow
 
 
 class ExcelExpenseStorage:
-    headers = ("date", "merchant/item", "amount")
+    headers = ("date", "merchant/item", "amount", "direction")
     sheet_name = "expenses"
 
     def __init__(self, workbook_path: str | Path):
@@ -28,7 +28,7 @@ class ExcelExpenseStorage:
         workbook = self._load_or_create_workbook()
         worksheet = self._get_expenses_sheet(workbook)
         for row in rows:
-            worksheet.append([row.date, row.merchant_item, row.amount])
+            worksheet.append([row.date, row.merchant_item, row.amount, row.direction])
         workbook.save(self.workbook_path)
 
     def list_rows(self) -> list[ExpenseRow]:
@@ -38,15 +38,23 @@ class ExcelExpenseStorage:
         for values in worksheet.iter_rows(min_row=2, values_only=True):
             if not any(values):
                 continue
-            date, merchant_item, amount = values[:3]
+            padded = list(values) + [""] * (4 - len(values))
+            date, merchant_item, amount, direction = padded[:4]
             rows.append(
                 ExpenseRow(
                     date=self._normalize_date_value(date),
                     merchant_item="" if merchant_item is None else str(merchant_item),
                     amount="" if amount is None else str(amount),
+                    direction="" if direction is None else str(direction),
                 )
             )
         return rows
+
+    def clear_all(self) -> None:
+        workbook = self._load_or_create_workbook()
+        worksheet = self._get_expenses_sheet(workbook)
+        worksheet.delete_rows(2, worksheet.max_row)
+        workbook.save(self.workbook_path)
 
     def _load_or_create_workbook(self):
         if self.workbook_path.exists():

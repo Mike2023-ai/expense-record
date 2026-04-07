@@ -185,6 +185,38 @@ input[type="file"] {
   box-shadow: none;
 }
 
+#copy-all-button,
+#clear-history-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+#copy-all-button {
+  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(127, 61, 18, 0.22);
+}
+
+#copy-all-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(127, 61, 18, 0.28);
+}
+
+.danger-button {
+  background: linear-gradient(180deg, #c0392b, #962d22) !important;
+  color: #fff !important;
+  box-shadow: 0 10px 24px rgba(150, 45, 34, 0.22);
+}
+
+.danger-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(150, 45, 34, 0.28) !important;
+}
+
 .preview-card {
   margin: 18px 0 0;
   padding: 16px;

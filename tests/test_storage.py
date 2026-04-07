@@ -52,9 +52,9 @@ def test_excel_storage_preserves_preexisting_rows_with_custom_header(tmp_path):
 
     reloaded = load_workbook(workbook_path).active
     assert [row for row in reloaded.iter_rows(values_only=True)] == [
-        ("Date", "Merchant", "Amount"),
-        ("2026-03-01", "Existing Shop", "11.00"),
-        ("2026-03-02", "New Shop", "12.00"),
+        ("Date", "Merchant", "Amount", None),
+        ("2026-03-01", "Existing Shop", "11.00", None),
+        ("2026-03-02", "New Shop", "12.00", None),
     ]
 
 
@@ -80,9 +80,9 @@ def test_excel_storage_uses_named_expenses_sheet_in_multi_sheet_workbook(tmp_pat
     reloaded = load_workbook(workbook_path)
     assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
     assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
-        ("date", "merchant/item", "amount"),
-        ("2026-03-01", "Existing Shop", "11.00"),
-        ("2026-03-02", "New Shop", "12.00"),
+        ("date", "merchant/item", "amount", None),
+        ("2026-03-01", "Existing Shop", "11.00", None),
+        ("2026-03-02", "New Shop", "12.00", None),
     ]
 
 
@@ -103,8 +103,8 @@ def test_excel_storage_creates_missing_expenses_sheet_with_headers(tmp_path):
     reloaded = load_workbook(workbook_path)
     assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
     assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
-        ("date", "merchant/item", "amount"),
-        ("2026-03-02", "New Shop", "12.00"),
+        ("date", "merchant/item", "amount", "direction"),
+        ("2026-03-02", "New Shop", "12.00", None),
     ]
 
 
@@ -126,8 +126,8 @@ def test_excel_storage_initializes_blank_existing_expenses_sheet(tmp_path):
     reloaded = load_workbook(workbook_path)
     assert [row for row in reloaded["summary"].iter_rows(values_only=True)] == [("ignore", "these", "rows")]
     assert [row for row in reloaded["expenses"].iter_rows(values_only=True)] == [
-        ("date", "merchant/item", "amount"),
-        ("2026-03-03", "Blank Sheet Shop", "13.00"),
+        ("date", "merchant/item", "amount", "direction"),
+        ("2026-03-03", "Blank Sheet Shop", "13.00", None),
     ]
 
 

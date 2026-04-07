@@ -26,6 +26,12 @@ def list_rows():
     return jsonify({"rows": rows})
 
 
+@api.delete("/rows")
+def clear_rows():
+    _storage().clear_all()
+    return jsonify({"rows": []})
+
+
 @api.post("/extract")
 def extract_row():
     image = request.files.get("image")
@@ -40,10 +46,11 @@ def extract_row():
         return jsonify({"error": "OCR extraction failed."}), 500
 
     row_dicts = [row.to_dict() for row in rows]
+    core_keys = ("date", "merchant_item", "amount")
     warning = ""
-    if not any(any(value for value in row.values()) for row in row_dicts):
+    if not any(any(row.get(k) for k in core_keys) for row in row_dicts):
         warning = "OCR returned no usable fields."
-    elif any(not all(value for value in row.values()) for row in row_dicts):
+    elif any(not all(row.get(k) for k in core_keys) for row in row_dicts):
         warning = "OCR returned incomplete fields."
 
     payload = {"rows": row_dicts, "lines": lines}
@@ -238,8 +245,9 @@ def _statement_rows_to_expense_rows(rows: list[StatementImportRow]) -> list[Expe
     return [
         ExpenseRow(
             date=row.transaction_time,
-            merchant_item=f"{row.counterparty} | {row.direction}",
+            merchant_item=row.counterparty,
             amount=row.amount,
+            direction=row.direction,
         )
         for row in rows
     ]

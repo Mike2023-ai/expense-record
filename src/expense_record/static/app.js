@@ -13,6 +13,8 @@ const elements = {
   reviewBody: document.getElementById("review-body"),
   reviewHeader: document.getElementById("review-header"),
   recordsBody: document.getElementById("records-body"),
+  copyAllButton: document.getElementById("copy-all-button"),
+  clearHistoryButton: document.getElementById("clear-history-button"),
 };
 
 let selectedFile = null;
@@ -213,7 +215,7 @@ function renderRows(rows) {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
+    td.colSpan = 4;
     td.textContent = "No saved records yet.";
     tr.appendChild(td);
     elements.recordsBody.appendChild(tr);
@@ -222,7 +224,7 @@ function renderRows(rows) {
 
   for (const row of rows) {
     const tr = document.createElement("tr");
-    for (const key of ["date", "merchant_item", "amount"]) {
+    for (const key of ["date", "merchant_item", "amount", "direction"]) {
       const td = document.createElement("td");
       td.textContent = row[key] ?? "";
       tr.appendChild(td);
@@ -474,9 +476,52 @@ elements.saveButton.addEventListener("click", () => {
   void saveRows();
 });
 
+async function clearHistory() {
+  if (!confirm("Are you sure you want to clear all saved records?")) {
+    return;
+  }
+  try {
+    const response = await fetch("/api/rows", { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) {
+      setStatus(data.error || "Clear failed.", true);
+      return;
+    }
+    renderRows([]);
+    setStatus("All records cleared.");
+  } catch (_error) {
+    setStatus("Clear failed.", true);
+  }
+}
+
+function copyAllRows() {
+  const rows = Array.from(elements.recordsBody.children);
+  if (!rows.length) {
+    setStatus("No records to copy.", true);
+    return;
+  }
+  const header = "Date\tMerchant / Item\tAmount\tDirection";
+  const lines = rows.map((tr) =>
+    Array.from(tr.children).map((td) => td.textContent).join("\t")
+  );
+  const text = [header, ...lines].join("\n");
+  navigator.clipboard.writeText(text).then(
+    () => setStatus("Copied all records to clipboard."),
+    () => setStatus("Copy failed.", true)
+  );
+}
+
 elements.extractButton.disabled = true;
 elements.importStatementButton.disabled = true;
 elements.saveButton.disabled = true;
+
+elements.clearHistoryButton.addEventListener("click", () => {
+  void clearHistory();
+});
+
+elements.copyAllButton.addEventListener("click", () => {
+  copyAllRows();
+});
 
 void loadRows().catch(() => {
   setStatus("Could not load saved rows.", true);
