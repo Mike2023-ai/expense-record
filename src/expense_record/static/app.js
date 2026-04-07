@@ -496,7 +496,12 @@ async function clearHistory() {
 
 function copyAllRows() {
   const rows = Array.from(elements.recordsBody.children);
-  if (!rows.length) {
+  const hasOnlyEmptyStateRow =
+    rows.length === 1 &&
+    rows[0].children.length === 1 &&
+    Number(rows[0].children[0].colSpan || 0) > 1;
+
+  if (!rows.length || hasOnlyEmptyStateRow) {
     setStatus("No records to copy.", true);
     return;
   }

@@ -684,6 +684,147 @@ def test_frontend_shows_api_error_messages_for_extract_and_save():
     subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
 
 
+def test_frontend_copy_all_ignores_empty_saved_records_state():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            listeners: {},
+            children: [],
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
+        };
+        elements["preview-image"].hidden = true;
+
+        const clipboardWrites = [];
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {
+            readAsDataURL() {}
+          },
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url) => {
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          navigator: {
+            clipboard: {
+              writeText: async (text) => {
+                clipboardWrites.push(text);
+              },
+            },
+          },
+          document: {
+            addEventListener() {},
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          await flush();
+
+          assert.strictEqual(elements["records-body"].children.length, 1);
+          elements["copy-all-button"].listeners.click();
+          await flush();
+
+          assert.deepStrictEqual(clipboardWrites, []);
+          assert.strictEqual(elements["status-message"].textContent, "No records to copy.");
+          assert.strictEqual(elements["status-message"].style.color, "#9d2d22");
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
 def test_imported_wechat_rows_can_be_saved(client):
     response = client.post(
         "/api/import-statement",
