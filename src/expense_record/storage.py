@@ -110,13 +110,13 @@ class ExcelExpenseStorage:
         return self._list_records(self._MEMBERS_SPEC, MemberRecord)
 
     def append_asset_snapshots(self, rows: Iterable[AssetSnapshot]) -> None:
-        self._append_records(self._ASSET_SNAPSHOTS_SPEC, self._filter_asset_snapshots(rows))
+        self._append_records(self._ASSET_SNAPSHOTS_SPEC, rows)
 
     def list_asset_snapshots(self) -> list[AssetSnapshot]:
         return self._list_records(self._ASSET_SNAPSHOTS_SPEC, AssetSnapshot)
 
     def append_stock_records(self, rows: Iterable[StockRecord]) -> None:
-        self._append_records(self._STOCK_RECORDS_SPEC, self._filter_stock_records(rows))
+        self._append_records(self._STOCK_RECORDS_SPEC, rows)
 
     def list_stock_records(self) -> list[StockRecord]:
         return self._list_records(self._STOCK_RECORDS_SPEC, StockRecord)
@@ -208,17 +208,6 @@ class ExcelExpenseStorage:
 
     def _filter_member_records(self, rows: Iterable[MemberRecord]) -> list[MemberRecord]:
         return [row for row in rows if _is_effective_amount(row.amount)]
-
-    def _filter_asset_snapshots(self, rows: Iterable[AssetSnapshot]) -> list[AssetSnapshot]:
-        return [
-            row
-            for row in rows
-            if _is_effective_amount(row.cash_or_balance_total) or _is_effective_amount(row.stock_total_value)
-        ]
-
-    def _filter_stock_records(self, rows: Iterable[StockRecord]) -> list[StockRecord]:
-        return [row for row in rows if _is_effective_amount(row.stock_total_value)]
-
 
 def _is_effective_amount(amount_text: str) -> bool:
     if not amount_text:

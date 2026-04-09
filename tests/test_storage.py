@@ -402,7 +402,7 @@ def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
     ]
 
 
-def test_storage_ignores_family_finance_rows_with_amounts_below_one(tmp_path):
+def test_storage_filters_only_ledger_like_amount_rows_below_one(tmp_path):
     storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
 
     storage.append_ledger_entries(
@@ -538,12 +538,26 @@ def test_storage_ignores_family_finance_rows_with_amounts_below_one(tmp_path):
     assert storage.list_asset_snapshots() == [
         AssetSnapshot(
             date="2026-04-30",
+            cash_or_balance_total="0.50",
+            stock_total_value="0.00",
+            note="Ignored",
+        ),
+        AssetSnapshot(
+            date="2026-04-30",
             cash_or_balance_total="1.00",
             stock_total_value="0.00",
             note="Kept",
         )
     ]
     assert storage.list_stock_records() == [
+        StockRecord(
+            date="2026-04-30",
+            stock_name="PENNY",
+            stock_quantity="1",
+            stock_price="0.50",
+            stock_total_value="0.50",
+            note="Ignored",
+        ),
         StockRecord(
             date="2026-04-30",
             stock_name="ACME",
