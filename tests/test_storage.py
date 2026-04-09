@@ -1,4 +1,11 @@
-from expense_record.models import AssetSnapshot, ExpenseRow, LedgerEntry
+from expense_record.models import (
+    AssetSnapshot,
+    CategoryRecord,
+    ExpenseRow,
+    LedgerEntry,
+    MemberRecord,
+    StockRecord,
+)
 from expense_record.storage import ExcelExpenseStorage
 from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
@@ -187,5 +194,69 @@ def test_asset_snapshot_to_dict_returns_expected_shape():
         "date": "2026-04-30",
         "cash_or_balance_total": "20000.00",
         "stock_total_value": "150000.00",
+        "note": "Month end",
+    }
+
+
+def test_ledger_entry_docstring_clarifies_direction_and_entry_type():
+    assert LedgerEntry.__doc__ == (
+        "LedgerEntry represents a family ledger row.\n\n"
+        "direction stores the cash flow direction, while entry_type stores the\n"
+        "business classification of the row."
+    )
+
+
+def test_category_record_to_dict_returns_expected_shape():
+    record = CategoryRecord(
+        date="2026-04-30",
+        category="salary",
+        amount="5000.00",
+        direction="income",
+        note="April salary",
+    )
+
+    assert record.to_dict() == {
+        "date": "2026-04-30",
+        "category": "salary",
+        "amount": "5000.00",
+        "direction": "income",
+        "note": "April salary",
+    }
+
+
+def test_member_record_to_dict_returns_expected_shape():
+    record = MemberRecord(
+        date="2026-04-30",
+        member="Mike",
+        amount="5000.00",
+        direction="income",
+        note="April salary",
+    )
+
+    assert record.to_dict() == {
+        "date": "2026-04-30",
+        "member": "Mike",
+        "amount": "5000.00",
+        "direction": "income",
+        "note": "April salary",
+    }
+
+
+def test_stock_record_to_dict_returns_expected_shape():
+    record = StockRecord(
+        date="2026-04-30",
+        stock_name="ACME",
+        stock_quantity="10",
+        stock_price="100.00",
+        stock_total_value="1000.00",
+        note="Month end",
+    )
+
+    assert record.to_dict() == {
+        "date": "2026-04-30",
+        "stock_name": "ACME",
+        "stock_quantity": "10",
+        "stock_price": "100.00",
+        "stock_total_value": "1000.00",
         "note": "Month end",
     }

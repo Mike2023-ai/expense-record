@@ -37,6 +37,8 @@ class StatementImportRow:
 
 @dataclass(slots=True)
 class LedgerEntry:
+    """LedgerEntry represents a family ledger row.\n\ndirection stores the cash flow direction, while entry_type stores the\nbusiness classification of the row."""
+
     date: str = ""
     description: str = ""
     amount: str = ""
