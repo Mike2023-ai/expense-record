@@ -34,6 +34,26 @@ class StatementImportRow:
             "amount": self.amount,
         }
 
+    def to_ledger_entry(
+        self,
+        *,
+        amount: str,
+        direction: str,
+        source: str,
+        entry_type: str,
+    ) -> LedgerEntry:
+        return LedgerEntry(
+            date=self.transaction_time,
+            description=self.counterparty,
+            amount=amount,
+            direction=direction,
+            category="",
+            member="",
+            source=source,
+            entry_type=entry_type,
+            note="",
+        )
+
 
 @dataclass(slots=True)
 class LedgerEntry:

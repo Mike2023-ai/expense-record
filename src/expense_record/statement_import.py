@@ -8,7 +8,7 @@ import re
 from xml.etree import ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
-from expense_record.models import StatementImportRow
+from expense_record.models import LedgerEntry, StatementImportRow
 
 
 class UnsupportedStatementFileError(ValueError):
@@ -80,6 +80,22 @@ def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImpo
     except PARSE_ERROR_TYPES:
         raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
     raise UnsupportedStatementFileError("Unsupported or ambiguous statement file.")
+
+
+def statement_rows_to_review_rows(rows: list[StatementImportRow], *, source: str) -> list[LedgerEntry]:
+    review_rows: list[LedgerEntry] = []
+    for row in rows:
+        direction = _normalize_review_direction(row.direction)
+        entry_type = "income" if direction == "income" else "expense"
+        review_rows.append(
+            row.to_ledger_entry(
+                amount=_normalize_signed_amount(row.direction, row.amount),
+                direction=direction,
+                source=source,
+                entry_type=entry_type,
+            )
+        )
+    return review_rows
 
 
 def _import_wechat_rows(raw_bytes: bytes) -> list[StatementImportRow]:
@@ -238,6 +254,16 @@ def _normalize_amount(value: str) -> str:
     amount = Decimal(text)
     normalized = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return format(normalized, "f")
+
+
+def _normalize_signed_amount(direction: str, amount: str) -> str:
+    decimal_amount = abs(Decimal(amount))
+    sign = "+" if _normalize_review_direction(direction) == "income" else "-"
+    return f"{sign}{decimal_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
+
+
+def _normalize_review_direction(direction: str) -> str:
+    return "income" if direction.strip() in {"income", "收入"} else "expense"
 
 
 def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:

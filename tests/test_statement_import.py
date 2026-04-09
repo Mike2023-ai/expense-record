@@ -12,6 +12,7 @@ from expense_record.statement_import import (
     UnsupportedStatementFileError,
     detect_statement_source,
     import_statement_rows,
+    statement_rows_to_review_rows,
 )
 
 
@@ -171,6 +172,51 @@ def test_statement_import_row_to_dict_returns_api_shape():
         "direction": "支出",
         "amount": "26.50",
     }
+
+
+def test_statement_rows_to_review_rows_adds_blank_required_fields():
+    rows = statement_rows_to_review_rows(
+        [
+            StatementImportRow(
+                transaction_time="2026-04-10 10:00:00",
+                counterparty="Salary",
+                direction="收入",
+                amount="5000.00",
+            ),
+            StatementImportRow(
+                transaction_time="2026-04-10 12:00:00",
+                counterparty="Lunch",
+                direction="支出",
+                amount="26.50",
+            ),
+        ],
+        source="wechat",
+    )
+
+    assert [row.to_dict() for row in rows] == [
+        {
+            "date": "2026-04-10 10:00:00",
+            "description": "Salary",
+            "amount": "+5000.00",
+            "direction": "income",
+            "category": "",
+            "member": "",
+            "source": "wechat",
+            "entry_type": "income",
+            "note": "",
+        },
+        {
+            "date": "2026-04-10 12:00:00",
+            "description": "Lunch",
+            "amount": "-26.50",
+            "direction": "expense",
+            "category": "",
+            "member": "",
+            "source": "wechat",
+            "entry_type": "expense",
+            "note": "",
+        },
+    ]
 
 
 def test_import_statement_rows_skips_wechat_footer_row_after_detail_table():

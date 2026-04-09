@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
 
 from expense_record.config import DEFAULT_EXCEL_PATH
-from expense_record.models import ExpenseRow, StatementImportRow
+from expense_record.models import ExpenseRow, LedgerEntry, StatementImportRow
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import extract_expense_rows
 
@@ -65,10 +66,20 @@ def import_statement():
     if statement_file is None or statement_file.filename == "":
         return jsonify({"error": "No statement file provided."}), 400
 
-    from expense_record.statement_import import UnsupportedStatementFileError, import_statement_rows
+    from expense_record.statement_import import (
+        UnsupportedStatementFileError,
+        detect_statement_source,
+        import_statement_rows,
+        statement_rows_to_review_rows,
+    )
 
     try:
-        rows = _normalize_statement_rows(import_statement_rows(statement_file.filename, statement_file.read()))
+        raw_bytes = statement_file.read()
+        source = detect_statement_source(statement_file.filename, raw_bytes)
+        rows = statement_rows_to_review_rows(
+            _normalize_statement_rows(import_statement_rows(statement_file.filename, raw_bytes)),
+            source=source,
+        )
     except UnsupportedStatementFileError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception:
@@ -104,6 +115,7 @@ def save_row():
 
     storage = _storage()
     rows_to_save: list[ExpenseRow] = []
+    ledger_rows_to_save: list[LedgerEntry] = []
     selected_count = 0
     if isinstance(payload, dict) and payload.get("mode") == "statement":
         for row_payload in rows_payload:
@@ -116,18 +128,7 @@ def save_row():
             statement_row = selected_row
             if _statement_row_is_effectively_blank(statement_row):
                 return jsonify({"error": "At least one selected row is required."}), 400
-            rows_to_save.extend(
-                _statement_rows_to_expense_rows(
-                    [
-                        StatementImportRow(
-                            transaction_time=statement_row.transaction_time,
-                            counterparty=statement_row.counterparty,
-                            direction=statement_row.direction,
-                            amount=statement_row.amount,
-                        )
-                    ]
-                )
-            )
+            ledger_rows_to_save.append(statement_row)
     else:
         for row_payload in rows_payload:
             if not isinstance(row_payload, dict):
@@ -153,8 +154,12 @@ def save_row():
     if selected_count == 0:
         return jsonify({"error": "At least one selected row is required."}), 400
 
-    storage.append_rows(rows_to_save)
+    if ledger_rows_to_save:
+        storage.append_ledger_entries(ledger_rows_to_save)
+        rows = [item.to_dict() for item in storage.list_ledger_entries()]
+        return jsonify({"rows": rows})
 
+    storage.append_rows(rows_to_save)
     rows = [item.to_dict() for item in storage.list_rows()]
     return jsonify({"rows": rows})
 
@@ -197,16 +202,19 @@ def _normalize_statement_rows(rows: object) -> list[StatementImportRow]:
     return normalized
 
 
-def _coerce_statement_save_field(payload: object, field: str) -> str | None:
+def _coerce_statement_save_field(payload: object, field: str, *, allow_blank: bool = False) -> str | None:
     if not isinstance(payload, dict):
         return None
     value = payload.get(field)
     if value is None or not isinstance(value, str):
         return None
-    return value.strip()
+    normalized = value.strip()
+    if normalized or allow_blank:
+        return normalized
+    return None
 
 
-def _normalize_selected_statement_save_row(payload: object) -> StatementImportRow | bool | None:
+def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | bool | None:
     if not isinstance(payload, dict):
         return None
 
@@ -216,41 +224,59 @@ def _normalize_selected_statement_save_row(payload: object) -> StatementImportRo
     if not selected:
         return False
 
-    transaction_time = _coerce_statement_save_field(payload, "transaction_time")
-    counterparty = _coerce_statement_save_field(payload, "counterparty")
+    transaction_time = _coerce_statement_save_field(payload, "date")
+    counterparty = _coerce_statement_save_field(payload, "description")
     direction = _coerce_statement_save_field(payload, "direction")
     amount = _coerce_statement_save_field(payload, "amount")
+    category = _coerce_statement_save_field(payload, "category")
+    member = _coerce_statement_save_field(payload, "member")
+    source = _coerce_statement_save_field(payload, "source", allow_blank=True)
+    note = _coerce_statement_save_field(payload, "note", allow_blank=True)
 
     if (
         transaction_time is None
         or counterparty is None
         or direction is None
         or amount is None
+        or category is None
+        or member is None
+        or source is None
+        or note is None
     ):
         return None
 
-    return StatementImportRow(
-        transaction_time=transaction_time,
-        counterparty=counterparty,
-        direction=direction,
-        amount=amount,
+    try:
+        signed_amount = _normalize_signed_amount(direction, amount)
+    except ValueError:
+        return False
+    except InvalidOperation:
+        return None
+
+    normalized_direction = "income" if direction in {"income", "收入"} else "expense"
+    entry_type = "income" if normalized_direction == "income" else "expense"
+    return LedgerEntry(
+        date=transaction_time,
+        description=counterparty,
+        direction=normalized_direction,
+        amount=signed_amount,
+        category=category,
+        member=member,
+        source=source,
+        entry_type=entry_type,
+        note=note,
     )
 
 
-def _statement_row_is_effectively_blank(row: StatementImportRow) -> bool:
-    return not any((row.transaction_time, row.counterparty, row.direction, row.amount))
+def _statement_row_is_effectively_blank(row: LedgerEntry) -> bool:
+    return not any((row.date, row.description, row.direction, row.amount, row.category, row.member))
 
 
-def _statement_rows_to_expense_rows(rows: list[StatementImportRow]) -> list[ExpenseRow]:
-    return [
-        ExpenseRow(
-            date=row.transaction_time,
-            merchant_item=row.counterparty,
-            amount=row.amount,
-            direction=row.direction,
-        )
-        for row in rows
-    ]
+def _normalize_signed_amount(direction: str, amount: str) -> str:
+    decimal_amount = abs(Decimal(amount))
+    if decimal_amount < Decimal("1"):
+        raise ValueError("Amount too small.")
+    sign = "+" if direction in {"income", "收入"} else "-"
+    return f"{sign}{decimal_amount.quantize(Decimal('0.01'))}"
 
 
 def _extract_save_rows_payload(payload: object) -> list[object] | None:

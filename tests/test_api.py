@@ -14,6 +14,7 @@ from openpyxl import Workbook
 
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
+from expense_record.storage import ExcelExpenseStorage
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
@@ -364,16 +365,26 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
             json: async () => ({
               rows: [
                 {
-                  transaction_time: "2026-03-29 18:44:00",
-                  counterparty: "叫了个炸鸡",
-                  direction: "支出",
-                  amount: "26.50",
+                  date: "2026-03-29 18:44:00",
+                  description: "叫了个炸鸡",
+                  amount: "-26.50",
+                  direction: "expense",
+                  category: "",
+                  member: "",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
                 {
-                  transaction_time: "2026-03-29 18:41:00",
-                  counterparty: "商户_沈菊",
-                  direction: "支出",
-                  amount: "10.00",
+                  date: "2026-03-29 18:41:00",
+                  description: "商户_沈菊",
+                  amount: "-10.00",
+                  direction: "expense",
+                  category: "",
+                  member: "",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
               ],
             }),
@@ -382,16 +393,23 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
 
           assert.deepStrictEqual(
             elements["review-header"].children.map((child) => child.textContent),
-            ["Use", "Transaction Time", "Counterparty", "Direction", "Amount"]
+            ["Use", "Date", "Description", "Amount", "Direction", "Category", "Member", "Source", "Entry Type", "Note"]
           );
           assert.strictEqual(elements["review-body"].children.length, 2);
           assert.strictEqual(elements["review-body"].children[0].children[1].children[0].value, "2026-03-29 18:44:00");
           assert.strictEqual(elements["review-body"].children[0].children[2].children[0].value, "叫了个炸鸡");
-          assert.strictEqual(elements["review-body"].children[0].children[3].children[0].value, "支出");
-          assert.strictEqual(elements["review-body"].children[0].children[4].children[0].value, "26.50");
+          assert.strictEqual(elements["review-body"].children[0].children[3].children[0].value, "-26.50");
+          assert.strictEqual(elements["review-body"].children[0].children[4].children[0].value, "expense");
+          assert.strictEqual(elements["review-body"].children[0].children[5].children[0].value, "");
+          assert.strictEqual(elements["review-body"].children[0].children[6].children[0].value, "");
           assert.strictEqual(elements["save-button"].disabled, false);
           assert.strictEqual(elements["import-statement-button"].disabled, false);
           assert.strictEqual(elements["status-message"].textContent, "Statement imported. Review the rows before saving.");
+
+          elements["review-body"].children[0].children[5].children[0].value = "food";
+          elements["review-body"].children[0].children[6].children[0].value = "Mike";
+          elements["review-body"].children[1].children[5].children[0].value = "food";
+          elements["review-body"].children[1].children[6].children[0].value = "Mike";
 
           elements["save-button"].listeners.click();
           const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
@@ -400,17 +418,27 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
             rows: [
               {
                 selected: true,
-                transaction_time: "2026-03-29 18:44:00",
-                counterparty: "叫了个炸鸡",
-                direction: "支出",
-                amount: "26.50",
+                date: "2026-03-29 18:44:00",
+                description: "叫了个炸鸡",
+                amount: "-26.50",
+                direction: "expense",
+                category: "food",
+                member: "Mike",
+                source: "wechat",
+                entry_type: "expense",
+                note: "",
               },
               {
                 selected: true,
-                transaction_time: "2026-03-29 18:41:00",
-                counterparty: "商户_沈菊",
-                direction: "支出",
-                amount: "10.00",
+                date: "2026-03-29 18:41:00",
+                description: "商户_沈菊",
+                amount: "-10.00",
+                direction: "expense",
+                category: "food",
+                member: "Mike",
+                source: "wechat",
+                entry_type: "expense",
+                note: "",
               },
             ],
           });
@@ -420,13 +448,25 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
               rows: [
                 {
                   date: "2026-03-29 18:44:00",
-                  merchant_item: "叫了个炸鸡 | 支出",
-                  amount: "26.50",
+                  description: "叫了个炸鸡",
+                  amount: "-26.50",
+                  direction: "expense",
+                  category: "food",
+                  member: "Mike",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
                 {
                   date: "2026-03-29 18:41:00",
-                  merchant_item: "商户_沈菊 | 支出",
-                  amount: "10.00",
+                  description: "商户_沈菊",
+                  amount: "-10.00",
+                  direction: "expense",
+                  category: "food",
+                  member: "Mike",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
               ],
             }),
@@ -460,10 +500,15 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
             json: async () => ({
               rows: [
                 {
-                  transaction_time: "2026-04-01 10:00:00",
-                  counterparty: "过期",
-                  direction: "支出",
-                  amount: "1.00",
+                  date: "2026-04-01 10:00:00",
+                  description: "过期",
+                  amount: "-1.00",
+                  direction: "expense",
+                  category: "",
+                  member: "",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
               ],
             }),
@@ -475,10 +520,15 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
             json: async () => ({
               rows: [
                 {
-                  transaction_time: "2026-04-03 18:40:31",
-                  counterparty: "淘宝闪购",
-                  direction: "支出",
-                  amount: "25.40",
+                  date: "2026-04-03 18:40:31",
+                  description: "淘宝闪购",
+                  amount: "-25.40",
+                  direction: "expense",
+                  category: "",
+                  member: "",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
                 },
               ],
             }),
@@ -834,11 +884,13 @@ def test_imported_wechat_rows_can_be_saved(client):
 
     assert response.status_code == 200
     rows = response.get_json()["rows"]
+    rows[0]["category"] = "food"
+    rows[0]["member"] = "Mike"
 
     save_response = client.post("/api/save", json={"mode": "statement", "rows": rows})
 
     assert save_response.status_code == 200
-    assert any("叫了个炸鸡" in row["merchant_item"] for row in save_response.get_json()["rows"])
+    assert any("叫了个炸鸡" in row["description"] for row in save_response.get_json()["rows"])
 
 
 def test_imported_alipay_statement_rows_can_be_saved(client):
@@ -850,11 +902,13 @@ def test_imported_alipay_statement_rows_can_be_saved(client):
 
     assert response.status_code == 200
     rows = response.get_json()["rows"]
+    rows[0]["category"] = "food"
+    rows[0]["member"] = "Mike"
 
     save_response = client.post("/api/save", json={"mode": "statement", "rows": rows})
 
     assert save_response.status_code == 200
-    assert any("淘宝闪购" in row["merchant_item"] for row in save_response.get_json()["rows"])
+    assert any("淘宝闪购" in row["description"] for row in save_response.get_json()["rows"])
 
 
 def _distribution_index(site_packages: Path) -> dict[str, metadata.Distribution]:
@@ -1156,10 +1210,15 @@ def test_import_statement_returns_normalized_rows(client):
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
         {
-            "transaction_time": "2026-03-29 18:44:00",
-            "counterparty": "叫了个炸鸡",
-            "direction": "支出",
-            "amount": "26.50",
+            "date": "2026-03-29 18:44:00",
+            "description": "叫了个炸鸡",
+            "amount": "-26.50",
+            "direction": "expense",
+            "category": "",
+            "member": "",
+            "source": "wechat",
+            "entry_type": "expense",
+            "note": "",
         }
     ]
 
@@ -1250,9 +1309,50 @@ def test_save_endpoint_allows_blank_manual_corrections(tmp_path):
     ]
 
 
+def test_statement_save_normalizes_expense_to_negative_and_income_to_positive(client):
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-04-10 10:00:00",
+                    "description": "Salary",
+                    "direction": "收入",
+                    "amount": "5000.00",
+                    "category": "salary",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "income",
+                    "note": "",
+                },
+                {
+                    "selected": True,
+                    "date": "2026-04-10 12:00:00",
+                    "description": "Lunch",
+                    "direction": "支出",
+                    "amount": "26.50",
+                    "category": "food",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    rows = response.get_json()["rows"]
+    assert rows[0]["amount"].startswith("+")
+    assert rows[1]["amount"].startswith("-")
+
+
 def test_save_endpoint_persists_selected_statement_rows(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
 
     response = client.post(
         "/api/save",
@@ -1260,10 +1360,15 @@ def test_save_endpoint_persists_selected_statement_rows(tmp_path):
             "mode": "statement",
             "rows": [
                 {
-                    "transaction_time": "2026-03-29 18:44:00",
-                    "counterparty": "叫了个炸鸡",
+                    "date": "2026-03-29 18:44:00",
+                    "description": "叫了个炸鸡",
                     "direction": "支出",
                     "amount": "26.50",
+                    "category": "food",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
                     "selected": True,
                 }
             ],
@@ -1272,8 +1377,19 @@ def test_save_endpoint_persists_selected_statement_rows(tmp_path):
 
     assert response.status_code == 200
     assert response.get_json()["rows"] == [
-        {"date": "2026-03-29 18:44:00", "merchant_item": "叫了个炸鸡", "amount": "26.50", "direction": "支出"}
+        {
+            "date": "2026-03-29 18:44:00",
+            "description": "叫了个炸鸡",
+            "amount": "-26.50",
+            "direction": "expense",
+            "category": "food",
+            "member": "Mike",
+            "source": "wechat",
+            "entry_type": "expense",
+            "note": "",
+        }
     ]
+    assert [row.to_dict() for row in storage.list_ledger_entries()] == response.get_json()["rows"]
 
 
 @pytest.mark.parametrize(
@@ -1281,29 +1397,44 @@ def test_save_endpoint_persists_selected_statement_rows(tmp_path):
     [
         (
             {
-                "transaction_time": ["2026-03-29 18:44:00"],
-                "counterparty": "叫了个炸鸡",
+                "date": ["2026-03-29 18:44:00"],
+                "description": "叫了个炸鸡",
                 "direction": "支出",
                 "amount": "26.50",
+                "category": "food",
+                "member": "Mike",
+                "source": "wechat",
+                "entry_type": "expense",
+                "note": "",
                 "selected": True,
             },
-            "non-string transaction_time",
+            "non-string date",
         ),
         (
             {
-                "transaction_time": "2026-03-29 18:44:00",
-                "counterparty": {"name": "叫了个炸鸡"},
+                "date": "2026-03-29 18:44:00",
+                "description": {"name": "叫了个炸鸡"},
                 "direction": "支出",
                 "amount": "26.50",
+                "category": "food",
+                "member": "Mike",
+                "source": "wechat",
+                "entry_type": "expense",
+                "note": "",
                 "selected": True,
             },
-            "non-string counterparty",
+            "non-string description",
         ),
         (
             {
-                "transaction_time": "2026-03-29 18:44:00",
-                "counterparty": "叫了个炸鸡",
+                "date": "2026-03-29 18:44:00",
+                "description": "叫了个炸鸡",
                 "direction": "支出",
+                "category": "food",
+                "member": "Mike",
+                "source": "wechat",
+                "entry_type": "expense",
+                "note": "",
                 "selected": True,
             },
             "missing amount",
@@ -1333,10 +1464,15 @@ def test_save_endpoint_rejects_whitespace_only_statement_rows(tmp_path):
             "mode": "statement",
             "rows": [
                 {
-                    "transaction_time": "   ",
-                    "counterparty": " \t ",
+                    "date": "   ",
+                    "description": " \t ",
                     "direction": "\n",
                     "amount": "   ",
+                    "category": " \t",
+                    "member": "\n",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
                     "selected": True,
                 }
             ],
@@ -1344,7 +1480,114 @@ def test_save_endpoint_rejects_whitespace_only_statement_rows(tmp_path):
     )
 
     assert response.status_code == 400
-    assert response.get_json() == {"error": "At least one selected row is required."}
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
+def test_statement_save_require_member(client):
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-04-10 12:00:00",
+                    "description": "Lunch",
+                    "direction": "支出",
+                    "amount": "26.50",
+                    "category": "food",
+                    "member": "",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
+def test_statement_save_require_category(client):
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-04-10 12:00:00",
+                    "description": "Lunch",
+                    "direction": "支出",
+                    "amount": "26.50",
+                    "category": "",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
+def test_statement_save_drops_rows_below_one(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "date": "2026-04-10 12:00:00",
+                    "description": "Interest",
+                    "direction": "收入",
+                    "amount": "0.99",
+                    "category": "interest",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "income",
+                    "note": "",
+                },
+                {
+                    "selected": True,
+                    "date": "2026-04-10 12:01:00",
+                    "description": "Coffee",
+                    "direction": "支出",
+                    "amount": "12.50",
+                    "category": "food",
+                    "member": "Mike",
+                    "source": "wechat",
+                    "entry_type": "expense",
+                    "note": "",
+                },
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {
+            "date": "2026-04-10 12:01:00",
+            "description": "Coffee",
+            "amount": "-12.50",
+            "direction": "expense",
+            "category": "food",
+            "member": "Mike",
+            "source": "wechat",
+            "entry_type": "expense",
+            "note": "",
+        }
+    ]
+    assert [row.to_dict() for row in storage.list_ledger_entries()] == response.get_json()["rows"]
 
 
 def test_save_endpoint_rejects_malformed_payload(tmp_path):

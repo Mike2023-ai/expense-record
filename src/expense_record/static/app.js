@@ -72,7 +72,7 @@ function renderReviewHeader(mode) {
 
   const headers =
     mode === "statement"
-      ? ["Use", "Transaction Time", "Counterparty", "Direction", "Amount"]
+      ? ["Use", "Date", "Description", "Amount", "Direction", "Category", "Member", "Source", "Entry Type", "Note"]
       : ["Use", "Date", "Merchant / Item", "Amount"];
 
   clearChildren(elements.reviewHeader);
@@ -131,10 +131,15 @@ function renderStatementReviewRows(rows) {
     checkboxCell.appendChild(checkbox);
     tr.appendChild(checkboxCell);
 
-    tr.appendChild(createInputCell(row.transaction_time, "YYYY-MM-DD HH:MM:SS"));
-    tr.appendChild(createInputCell(row.counterparty, "Counterparty"));
-    tr.appendChild(createInputCell(row.direction, "支出 / 收入 / 不计收支"));
-    tr.appendChild(createInputCell(row.amount, "0.00"));
+    tr.appendChild(createInputCell(row.date, "YYYY-MM-DD HH:MM:SS"));
+    tr.appendChild(createInputCell(row.description, "Description"));
+    tr.appendChild(createInputCell(row.amount, "+0.00 / -0.00"));
+    tr.appendChild(createInputCell(row.direction, "expense / income"));
+    tr.appendChild(createInputCell(row.category, "Category"));
+    tr.appendChild(createInputCell(row.member, "Member"));
+    tr.appendChild(createInputCell(row.source, "Source"));
+    tr.appendChild(createInputCell(row.entry_type, "Entry type"));
+    tr.appendChild(createInputCell(row.note, "Note"));
 
     elements.reviewBody.appendChild(tr);
   }
@@ -339,10 +344,15 @@ function collectReviewRows() {
   if (activeMode === "statement") {
     return Array.from(elements.reviewBody.children).map((row) => ({
       selected: Boolean(row.children[0].children[0].checked),
-      transaction_time: row.children[1].children[0].value.trim(),
-      counterparty: row.children[2].children[0].value.trim(),
-      direction: row.children[3].children[0].value.trim(),
-      amount: row.children[4].children[0].value.trim(),
+      date: row.children[1].children[0].value.trim(),
+      description: row.children[2].children[0].value.trim(),
+      amount: row.children[3].children[0].value.trim(),
+      direction: row.children[4].children[0].value.trim(),
+      category: row.children[5].children[0].value.trim(),
+      member: row.children[6].children[0].value.trim(),
+      source: row.children[7].children[0].value.trim(),
+      entry_type: row.children[8].children[0].value.trim(),
+      note: row.children[9].children[0].value.trim(),
     }));
   }
 
