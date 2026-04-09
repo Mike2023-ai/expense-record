@@ -260,3 +260,296 @@ def test_stock_record_to_dict_returns_expected_shape():
         "stock_total_value": "1000.00",
         "note": "Month end",
     }
+
+
+def test_storage_persists_manual_ledger_entry_with_member_category_and_signed_amount(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.append_ledger_entries(
+        [
+            LedgerEntry(
+                date="2026-04-10",
+                description="Salary",
+                amount="+5000.00",
+                direction="income",
+                category="salary",
+                member="Mike",
+                source="manual",
+                entry_type="income",
+                note="April",
+            )
+        ]
+    )
+
+    assert storage.list_ledger_entries() == [
+        LedgerEntry(
+            date="2026-04-10",
+            description="Salary",
+            amount="+5000.00",
+            direction="income",
+            category="salary",
+            member="Mike",
+            source="manual",
+            entry_type="income",
+            note="April",
+        )
+    ]
+
+
+def test_storage_replaces_categories_and_members_lists(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.replace_categories(
+        [
+            CategoryRecord(
+                date="2026-04-10",
+                category="salary",
+                amount="5000.00",
+                direction="income",
+                note="Primary income",
+            ),
+            CategoryRecord(
+                date="2026-04-10",
+                category="rounding",
+                amount="0.99",
+                direction="expense",
+                note="Should be ignored",
+            ),
+        ]
+    )
+    storage.replace_members(
+        [
+            MemberRecord(
+                date="2026-04-10",
+                member="Mike",
+                amount="5000.00",
+                direction="income",
+                note="Primary member",
+            ),
+            MemberRecord(
+                date="2026-04-10",
+                member="Family",
+                amount="-0.50",
+                direction="expense",
+                note="Should be ignored",
+            ),
+        ]
+    )
+
+    assert storage.list_categories() == [
+        CategoryRecord(
+            date="2026-04-10",
+            category="salary",
+            amount="5000.00",
+            direction="income",
+            note="Primary income",
+        )
+    ]
+    assert storage.list_members() == [
+        MemberRecord(
+            date="2026-04-10",
+            member="Mike",
+            amount="5000.00",
+            direction="income",
+            note="Primary member",
+        )
+    ]
+
+
+def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.append_asset_snapshots(
+        [
+            AssetSnapshot(
+                date="2026-04-30",
+                cash_or_balance_total="20000.00",
+                stock_total_value="150000.00",
+                note="Month end",
+            )
+        ]
+    )
+    storage.append_stock_records(
+        [
+            StockRecord(
+                date="2026-04-30",
+                stock_name="ACME",
+                stock_quantity="10",
+                stock_price="100.00",
+                stock_total_value="1000.00",
+                note="Brokerage",
+            )
+        ]
+    )
+
+    assert storage.list_asset_snapshots() == [
+        AssetSnapshot(
+            date="2026-04-30",
+            cash_or_balance_total="20000.00",
+            stock_total_value="150000.00",
+            note="Month end",
+        )
+    ]
+    assert storage.list_stock_records() == [
+        StockRecord(
+            date="2026-04-30",
+            stock_name="ACME",
+            stock_quantity="10",
+            stock_price="100.00",
+            stock_total_value="1000.00",
+            note="Brokerage",
+        )
+    ]
+
+
+def test_storage_ignores_family_finance_rows_with_amounts_below_one(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.append_ledger_entries(
+        [
+            LedgerEntry(
+                date="2026-04-10",
+                description="Interest",
+                amount="+0.99",
+                direction="income",
+                category="interest",
+                member="Mike",
+                source="manual",
+                entry_type="income",
+                note="Ignored",
+            ),
+            LedgerEntry(
+                date="2026-04-10",
+                description="Bonus",
+                amount="+1.00",
+                direction="income",
+                category="salary",
+                member="Mike",
+                source="manual",
+                entry_type="income",
+                note="Kept",
+            ),
+        ]
+    )
+    storage.replace_categories(
+        [
+            CategoryRecord(
+                date="2026-04-10",
+                category="interest",
+                amount="0.50",
+                direction="income",
+                note="Ignored",
+            ),
+            CategoryRecord(
+                date="2026-04-10",
+                category="salary",
+                amount="1.00",
+                direction="income",
+                note="Kept",
+            ),
+        ]
+    )
+    storage.replace_members(
+        [
+            MemberRecord(
+                date="2026-04-10",
+                member="Child",
+                amount="-0.50",
+                direction="expense",
+                note="Ignored",
+            ),
+            MemberRecord(
+                date="2026-04-10",
+                member="Mike",
+                amount="-1.00",
+                direction="expense",
+                note="Kept",
+            ),
+        ]
+    )
+    storage.append_asset_snapshots(
+        [
+            AssetSnapshot(
+                date="2026-04-30",
+                cash_or_balance_total="0.50",
+                stock_total_value="0.00",
+                note="Ignored",
+            ),
+            AssetSnapshot(
+                date="2026-04-30",
+                cash_or_balance_total="1.00",
+                stock_total_value="0.00",
+                note="Kept",
+            ),
+        ]
+    )
+    storage.append_stock_records(
+        [
+            StockRecord(
+                date="2026-04-30",
+                stock_name="PENNY",
+                stock_quantity="1",
+                stock_price="0.50",
+                stock_total_value="0.50",
+                note="Ignored",
+            ),
+            StockRecord(
+                date="2026-04-30",
+                stock_name="ACME",
+                stock_quantity="1",
+                stock_price="1.00",
+                stock_total_value="1.00",
+                note="Kept",
+            ),
+        ]
+    )
+
+    assert storage.list_ledger_entries() == [
+        LedgerEntry(
+            date="2026-04-10",
+            description="Bonus",
+            amount="+1.00",
+            direction="income",
+            category="salary",
+            member="Mike",
+            source="manual",
+            entry_type="income",
+            note="Kept",
+        )
+    ]
+    assert storage.list_categories() == [
+        CategoryRecord(
+            date="2026-04-10",
+            category="salary",
+            amount="1.00",
+            direction="income",
+            note="Kept",
+        )
+    ]
+    assert storage.list_members() == [
+        MemberRecord(
+            date="2026-04-10",
+            member="Mike",
+            amount="-1.00",
+            direction="expense",
+            note="Kept",
+        )
+    ]
+    assert storage.list_asset_snapshots() == [
+        AssetSnapshot(
+            date="2026-04-30",
+            cash_or_balance_total="1.00",
+            stock_total_value="0.00",
+            note="Kept",
+        )
+    ]
+    assert storage.list_stock_records() == [
+        StockRecord(
+            date="2026-04-30",
+            stock_name="ACME",
+            stock_quantity="1",
+            stock_price="1.00",
+            stock_total_value="1.00",
+            note="Kept",
+        )
+    ]
