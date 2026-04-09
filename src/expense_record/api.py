@@ -12,6 +12,7 @@ from expense_record.parser import extract_expense_rows
 
 
 api = Blueprint("api", __name__, url_prefix="/api")
+_DROP_STATEMENT_ROW = object()
 
 
 def _storage() -> ExcelExpenseStorage:
@@ -117,12 +118,16 @@ def save_row():
     rows_to_save: list[ExpenseRow] = []
     ledger_rows_to_save: list[LedgerEntry] = []
     selected_count = 0
+    dropped_statement_count = 0
     if isinstance(payload, dict) and payload.get("mode") == "statement":
         for row_payload in rows_payload:
             selected_row = _normalize_selected_statement_save_row(row_payload)
             if selected_row is None:
                 return jsonify({"error": "Invalid save payload."}), 400
             if selected_row is False:
+                continue
+            if selected_row is _DROP_STATEMENT_ROW:
+                dropped_statement_count += 1
                 continue
             selected_count += 1
             statement_row = selected_row
@@ -152,6 +157,9 @@ def save_row():
             rows_to_save.append(ExpenseRow(date=date, merchant_item=merchant_item, amount=amount))
 
     if selected_count == 0:
+        if dropped_statement_count > 0:
+            rows = [item.to_dict() for item in storage.list_ledger_entries()]
+            return jsonify({"rows": rows})
         return jsonify({"error": "At least one selected row is required."}), 400
 
     if ledger_rows_to_save:
@@ -214,7 +222,7 @@ def _coerce_statement_save_field(payload: object, field: str, *, allow_blank: bo
     return None
 
 
-def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | bool | None:
+def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | bool | object | None:
     if not isinstance(payload, dict):
         return None
 
@@ -224,14 +232,12 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
     if not selected:
         return False
 
-    transaction_time = _coerce_statement_save_field(payload, "date")
-    counterparty = _coerce_statement_save_field(payload, "description")
+    transaction_time = _coerce_statement_save_field(payload, "transaction_time")
+    counterparty = _coerce_statement_save_field(payload, "counterparty")
     direction = _coerce_statement_save_field(payload, "direction")
     amount = _coerce_statement_save_field(payload, "amount")
     category = _coerce_statement_save_field(payload, "category")
     member = _coerce_statement_save_field(payload, "member")
-    source = _coerce_statement_save_field(payload, "source", allow_blank=True)
-    note = _coerce_statement_save_field(payload, "note", allow_blank=True)
 
     if (
         transaction_time is None
@@ -240,15 +246,13 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
         or amount is None
         or category is None
         or member is None
-        or source is None
-        or note is None
     ):
         return None
 
     try:
         signed_amount = _normalize_signed_amount(direction, amount)
     except ValueError:
-        return False
+        return _DROP_STATEMENT_ROW
     except InvalidOperation:
         return None
 
@@ -261,9 +265,9 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
         amount=signed_amount,
         category=category,
         member=member,
-        source=source,
+        source="",
         entry_type=entry_type,
-        note=note,
+        note="",
     )
 
 

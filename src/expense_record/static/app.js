@@ -229,9 +229,14 @@ function renderRows(rows) {
 
   for (const row of rows) {
     const tr = document.createElement("tr");
-    for (const key of ["date", "merchant_item", "amount", "direction"]) {
+    for (const value of [
+      row.date ?? "",
+      row.merchant_item ?? row.description ?? "",
+      row.amount ?? "",
+      row.direction ?? "",
+    ]) {
       const td = document.createElement("td");
-      td.textContent = row[key] ?? "";
+      td.textContent = value;
       tr.appendChild(td);
     }
     elements.recordsBody.appendChild(tr);
@@ -344,15 +349,12 @@ function collectReviewRows() {
   if (activeMode === "statement") {
     return Array.from(elements.reviewBody.children).map((row) => ({
       selected: Boolean(row.children[0].children[0].checked),
-      date: row.children[1].children[0].value.trim(),
-      description: row.children[2].children[0].value.trim(),
-      amount: row.children[3].children[0].value.trim(),
+      transaction_time: row.children[1].children[0].value.trim(),
+      counterparty: row.children[2].children[0].value.trim(),
       direction: row.children[4].children[0].value.trim(),
+      amount: row.children[3].children[0].value.trim(),
       category: row.children[5].children[0].value.trim(),
       member: row.children[6].children[0].value.trim(),
-      source: row.children[7].children[0].value.trim(),
-      entry_type: row.children[8].children[0].value.trim(),
-      note: row.children[9].children[0].value.trim(),
     }));
   }
 
