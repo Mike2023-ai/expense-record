@@ -1,4 +1,4 @@
-from expense_record.models import ExpenseRow
+from expense_record.models import AssetSnapshot, ExpenseRow, LedgerEntry
 from expense_record.storage import ExcelExpenseStorage
 from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
@@ -147,3 +147,45 @@ def test_excel_storage_normalizes_typed_date_cells(tmp_path):
         ExpenseRow(date="2026-03-04", merchant_item="Typed Date Shop", amount="14.00"),
         ExpenseRow(date="2026-03-05", merchant_item="Typed Datetime Shop", amount="15.00"),
     ]
+
+
+def test_ledger_entry_to_dict_includes_member_category_and_signed_amount():
+    entry = LedgerEntry(
+        date="2026-04-10",
+        description="Salary",
+        amount="+5000.00",
+        direction="income",
+        category="salary",
+        member="Mike",
+        source="manual",
+        entry_type="income",
+        note="April salary",
+    )
+
+    assert entry.to_dict() == {
+        "date": "2026-04-10",
+        "description": "Salary",
+        "amount": "+5000.00",
+        "direction": "income",
+        "category": "salary",
+        "member": "Mike",
+        "source": "manual",
+        "entry_type": "income",
+        "note": "April salary",
+    }
+
+
+def test_asset_snapshot_to_dict_returns_expected_shape():
+    snapshot = AssetSnapshot(
+        date="2026-04-30",
+        cash_or_balance_total="20000.00",
+        stock_total_value="150000.00",
+        note="Month end",
+    )
+
+    assert snapshot.to_dict() == {
+        "date": "2026-04-30",
+        "cash_or_balance_total": "20000.00",
+        "stock_total_value": "150000.00",
+        "note": "Month end",
+    }

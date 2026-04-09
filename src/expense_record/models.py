@@ -33,3 +33,101 @@ class StatementImportRow:
             "direction": self.direction,
             "amount": self.amount,
         }
+
+
+@dataclass(slots=True)
+class LedgerEntry:
+    date: str = ""
+    description: str = ""
+    amount: str = ""
+    direction: str = ""
+    category: str = ""
+    member: str = ""
+    source: str = ""
+    entry_type: str = ""
+    note: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "date": self.date,
+            "description": self.description,
+            "amount": self.amount,
+            "direction": self.direction,
+            "category": self.category,
+            "member": self.member,
+            "source": self.source,
+            "entry_type": self.entry_type,
+            "note": self.note,
+        }
+
+
+@dataclass(slots=True)
+class CategoryRecord:
+    date: str = ""
+    category: str = ""
+    amount: str = ""
+    direction: str = ""
+    note: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "date": self.date,
+            "category": self.category,
+            "amount": self.amount,
+            "direction": self.direction,
+            "note": self.note,
+        }
+
+
+@dataclass(slots=True)
+class MemberRecord:
+    date: str = ""
+    member: str = ""
+    amount: str = ""
+    direction: str = ""
+    note: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "date": self.date,
+            "member": self.member,
+            "amount": self.amount,
+            "direction": self.direction,
+            "note": self.note,
+        }
+
+
+@dataclass(slots=True)
+class AssetSnapshot:
+    date: str = ""
+    cash_or_balance_total: str = ""
+    stock_total_value: str = ""
+    note: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "date": self.date,
+            "cash_or_balance_total": self.cash_or_balance_total,
+            "stock_total_value": self.stock_total_value,
+            "note": self.note,
+        }
+
+
+@dataclass(slots=True)
+class StockRecord:
+    date: str = ""
+    stock_name: str = ""
+    stock_quantity: str = ""
+    stock_price: str = ""
+    stock_total_value: str = ""
+    note: str = ""
+
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "date": self.date,
+            "stock_name": self.stock_name,
+            "stock_quantity": self.stock_quantity,
+            "stock_price": self.stock_price,
+            "stock_total_value": self.stock_total_value,
+            "note": self.note,
+        }
