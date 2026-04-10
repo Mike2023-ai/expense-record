@@ -1836,7 +1836,18 @@ def test_categories_endpoint_returns_seeded_defaults(client):
     response = client.get("/api/categories")
 
     assert response.status_code == 200
-    assert response.get_json() == {"categories": sorted(DEFAULT_CATEGORIES)}
+    assert response.get_json() == {
+        "categories": [
+            "cloth",
+            "commute",
+            "company",
+            "festival",
+            "food",
+            "insurance",
+            "operation fee",
+            "rent",
+        ]
+    }
 
 
 def test_categories_endpoint_adds_trimmed_category_once(tmp_path):
