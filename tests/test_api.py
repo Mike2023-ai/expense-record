@@ -1678,7 +1678,11 @@ def test_statement_save_allows_only_sub_one_rows_as_no_op(tmp_path):
     assert storage.list_ledger_entries() == []
 
 
-def test_manual_entry_endpoint_saves_income_with_required_fields(client):
+def test_manual_entry_endpoint_saves_income_with_required_fields(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+
     response = client.post(
         "/api/manual-entry",
         json={
@@ -1694,7 +1698,18 @@ def test_manual_entry_endpoint_saves_income_with_required_fields(client):
     )
 
     assert response.status_code == 200
-    assert response.get_json()["row"]["amount"] == "+5000.00"
+    assert response.get_json()["row"] == {
+        "date": "2026-04-10",
+        "description": "Salary",
+        "amount": "+5000.00",
+        "direction": "income",
+        "category": "salary",
+        "member": "Mike",
+        "source": "manual",
+        "entry_type": "income",
+        "note": "",
+    }
+    assert [row.to_dict() for row in storage.list_ledger_entries()] == [response.get_json()["row"]]
 
 
 def test_manual_entry_endpoint_saves_expense_with_required_fields(tmp_path):

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date as date_type, datetime as datetime_type
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -212,7 +212,4 @@ class ExcelExpenseStorage:
 def _is_effective_amount(amount_text: str) -> bool:
     if not amount_text:
         return False
-    try:
-        return abs(Decimal(amount_text)) >= Decimal("1")
-    except InvalidOperation:
-        return False
+    return abs(Decimal(amount_text)) >= Decimal("1")
