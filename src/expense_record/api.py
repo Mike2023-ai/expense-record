@@ -173,6 +173,17 @@ def save_row():
     return jsonify({"rows": rows})
 
 
+@api.post("/manual-entry")
+def save_manual_entry():
+    payload = request.get_json(silent=True)
+    row = _normalize_manual_entry_payload(payload)
+    if row is None:
+        return jsonify({"error": "Invalid manual entry payload."}), 400
+
+    _storage().append_ledger_entries([row])
+    return jsonify({"row": row.to_dict()})
+
+
 def _normalize_expense_rows(rows: object) -> list[ExpenseRow]:
     if rows is None:
         return []
@@ -280,6 +291,49 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
 
 def _statement_row_is_effectively_blank(row: LedgerEntry) -> bool:
     return not any((row.date, row.description, row.direction, row.amount, row.category, row.member))
+
+
+def _normalize_manual_entry_payload(payload: object) -> LedgerEntry | None:
+    date = _coerce_statement_save_field(payload, "date")
+    description = _coerce_statement_save_field(payload, "description")
+    direction = _coerce_statement_save_field(payload, "direction")
+    amount = _coerce_statement_save_field(payload, "amount")
+    category = _coerce_statement_save_field(payload, "category")
+    member = _coerce_statement_save_field(payload, "member")
+    entry_type = _coerce_statement_save_field(payload, "entry_type", allow_blank=True)
+    note = _coerce_statement_save_field(payload, "note", allow_blank=True)
+
+    if (
+        date is None
+        or description is None
+        or direction is None
+        or amount is None
+        or category is None
+        or member is None
+    ):
+        return None
+
+    try:
+        normalized_direction, signed_amount, default_entry_type = normalize_statement_ledger_fields(
+            direction,
+            amount,
+            minimum_amount=Decimal("1"),
+        )
+    except (InvalidOperation, ValueError):
+        return None
+
+    return LedgerEntry(
+        date=date,
+        description=description,
+        amount=signed_amount,
+        direction=normalized_direction,
+        category=category,
+        member=member,
+        source="manual",
+        entry_type=default_entry_type if entry_type in (None, "") else entry_type,
+        note="" if note is None else note,
+    )
+
 
 def _extract_save_rows_payload(payload: object) -> list[object] | None:
     if not isinstance(payload, dict):
