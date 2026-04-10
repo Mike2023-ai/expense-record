@@ -368,7 +368,7 @@ def test_storage_list_members_bootstraps_empty_sheet_on_first_read(tmp_path):
     assert storage.list_members() == []
 
 
-def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
+def test_storage_saves_asset_snapshot(tmp_path):
     storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
 
     storage.append_asset_snapshots(
@@ -381,6 +381,56 @@ def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
             )
         ]
     )
+
+    assert storage.list_asset_snapshots() == [
+        AssetSnapshot(
+            date="2026-04-30",
+            cash_or_balance_total="20000.00",
+            stock_total_value="150000.00",
+            note="Month end",
+        )
+    ]
+
+
+def test_storage_lists_asset_snapshots_in_append_order(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.append_asset_snapshots(
+        [
+            AssetSnapshot(
+                date="2026-04-29",
+                cash_or_balance_total="19000.00",
+                stock_total_value="149000.00",
+                note="Before month end",
+            ),
+            AssetSnapshot(
+                date="2026-04-30",
+                cash_or_balance_total="20000.00",
+                stock_total_value="150000.00",
+                note="Month end",
+            ),
+        ]
+    )
+
+    assert storage.list_asset_snapshots() == [
+        AssetSnapshot(
+            date="2026-04-29",
+            cash_or_balance_total="19000.00",
+            stock_total_value="149000.00",
+            note="Before month end",
+        ),
+        AssetSnapshot(
+            date="2026-04-30",
+            cash_or_balance_total="20000.00",
+            stock_total_value="150000.00",
+            note="Month end",
+        ),
+    ]
+
+
+def test_storage_saves_stock_record(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
     storage.append_stock_records(
         [
             StockRecord(
@@ -394,14 +444,6 @@ def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
         ]
     )
 
-    assert storage.list_asset_snapshots() == [
-        AssetSnapshot(
-            date="2026-04-30",
-            cash_or_balance_total="20000.00",
-            stock_total_value="150000.00",
-            note="Month end",
-        )
-    ]
     assert storage.list_stock_records() == [
         StockRecord(
             date="2026-04-30",
@@ -411,6 +453,50 @@ def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
             stock_total_value="1000.00",
             note="Brokerage",
         )
+    ]
+
+
+def test_storage_lists_stock_records_in_append_order(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.append_stock_records(
+        [
+            StockRecord(
+                date="2026-04-29",
+                stock_name="ABC",
+                stock_quantity="5",
+                stock_price="20.00",
+                stock_total_value="100.00",
+                note="First",
+            ),
+            StockRecord(
+                date="2026-04-30",
+                stock_name="ACME",
+                stock_quantity="10",
+                stock_price="100.00",
+                stock_total_value="1000.00",
+                note="Second",
+            ),
+        ]
+    )
+
+    assert storage.list_stock_records() == [
+        StockRecord(
+            date="2026-04-29",
+            stock_name="ABC",
+            stock_quantity="5",
+            stock_price="20.00",
+            stock_total_value="100.00",
+            note="First",
+        ),
+        StockRecord(
+            date="2026-04-30",
+            stock_name="ACME",
+            stock_quantity="10",
+            stock_price="100.00",
+            stock_total_value="1000.00",
+            note="Second",
+        ),
     ]
 
 

@@ -125,11 +125,17 @@ class ExcelExpenseStorage:
     def append_asset_snapshots(self, rows: Iterable[AssetSnapshot]) -> None:
         self._append_records(self._ASSET_SNAPSHOTS_SPEC, rows)
 
+    def append_asset_snapshot(self, row: AssetSnapshot) -> None:
+        self.append_asset_snapshots((row,))
+
     def list_asset_snapshots(self) -> list[AssetSnapshot]:
         return self._list_records(self._ASSET_SNAPSHOTS_SPEC, AssetSnapshot)
 
     def append_stock_records(self, rows: Iterable[StockRecord]) -> None:
         self._append_records(self._STOCK_RECORDS_SPEC, rows)
+
+    def append_stock_record(self, row: StockRecord) -> None:
+        self.append_stock_records((row,))
 
     def list_stock_records(self) -> list[StockRecord]:
         return self._list_records(self._STOCK_RECORDS_SPEC, StockRecord)

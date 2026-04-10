@@ -6,7 +6,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request
 
 from expense_record.config import DEFAULT_EXCEL_PATH
-from expense_record.models import ExpenseRow, LedgerEntry, StatementImportRow
+from expense_record.models import AssetSnapshot, ExpenseRow, LedgerEntry, StatementImportRow, StockRecord
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import extract_expense_rows
 from expense_record.statement_import import normalize_statement_ledger_fields
@@ -65,6 +65,40 @@ def add_member():
 
     members = [row.member for row in _storage().add_member(name)]
     return jsonify({"members": members})
+
+
+@api.get("/asset-snapshots")
+def list_asset_snapshots():
+    snapshots = [row.to_dict() for row in _storage().list_asset_snapshots()]
+    return jsonify({"snapshots": snapshots})
+
+
+@api.post("/asset-snapshots")
+def save_asset_snapshot():
+    payload = request.get_json(silent=True)
+    snapshot = _normalize_asset_snapshot_payload(payload)
+    if snapshot is None:
+        return jsonify({"error": "Invalid asset snapshot payload."}), 400
+
+    _storage().append_asset_snapshot(snapshot)
+    return jsonify({"snapshot": snapshot.to_dict()})
+
+
+@api.get("/stock-records")
+def list_stock_records():
+    records = [row.to_dict() for row in _storage().list_stock_records()]
+    return jsonify({"records": records})
+
+
+@api.post("/stock-records")
+def save_stock_record():
+    payload = request.get_json(silent=True)
+    record = _normalize_stock_record_payload(payload)
+    if record is None:
+        return jsonify({"error": "Invalid stock record payload."}), 400
+
+    _storage().append_stock_record(record)
+    return jsonify({"record": record.to_dict()})
 
 
 @api.post("/extract")
@@ -244,6 +278,58 @@ def _normalize_expense_rows(rows: object) -> list[ExpenseRow]:
             continue
         raise TypeError("Unexpected expense row value.")
     return normalized_rows
+
+
+def _normalize_asset_snapshot_payload(payload: object) -> AssetSnapshot | None:
+    date = _coerce_required_non_empty_field(payload, "date")
+    cash_or_balance_total = _coerce_required_non_empty_field(payload, "cash_or_balance_total")
+    stock_total_value = _coerce_required_non_empty_field(payload, "stock_total_value")
+    note = _coerce_required_non_empty_field(payload, "note")
+
+    if date is None or cash_or_balance_total is None or stock_total_value is None or note is None:
+        return None
+
+    return AssetSnapshot(
+        date=date,
+        cash_or_balance_total=cash_or_balance_total,
+        stock_total_value=stock_total_value,
+        note=note,
+    )
+
+
+def _normalize_stock_record_payload(payload: object) -> StockRecord | None:
+    date = _coerce_required_non_empty_field(payload, "date")
+    stock_name = _coerce_required_non_empty_field(payload, "stock_name")
+    stock_quantity = _coerce_required_non_empty_field(payload, "stock_quantity")
+    stock_price = _coerce_required_non_empty_field(payload, "stock_price")
+    stock_total_value = _coerce_required_non_empty_field(payload, "stock_total_value")
+    note = _coerce_required_non_empty_field(payload, "note")
+
+    if (
+        date is None
+        or stock_name is None
+        or stock_quantity is None
+        or stock_price is None
+        or stock_total_value is None
+        or note is None
+    ):
+        return None
+
+    return StockRecord(
+        date=date,
+        stock_name=stock_name,
+        stock_quantity=stock_quantity,
+        stock_price=stock_price,
+        stock_total_value=stock_total_value,
+        note=note,
+    )
+
+
+def _coerce_required_non_empty_field(payload: object, field: str) -> str | None:
+    value = _coerce_save_field(payload, field)
+    if value in (None, ""):
+        return None
+    return value
 
 
 def _normalize_statement_rows(rows: object) -> list[StatementImportRow]:

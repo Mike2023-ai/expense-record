@@ -1900,6 +1900,150 @@ def test_members_endpoint_adds_trimmed_member_once(tmp_path):
     assert duplicate_response.get_json() == {"members": ["Mike"]}
 
 
+def test_asset_snapshot_endpoint_saves_snapshot(client):
+    response = client.post(
+        "/api/asset-snapshots",
+        json={
+            "date": "2026-04-30",
+            "cash_or_balance_total": "20000.00",
+            "stock_total_value": "150000.00",
+            "note": "month end",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["snapshot"]["stock_total_value"] == "150000.00"
+
+
+def test_asset_snapshot_endpoint_lists_saved_snapshots(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    save_response = client.post(
+        "/api/asset-snapshots",
+        json={
+            "date": "2026-04-30",
+            "cash_or_balance_total": "20000.00",
+            "stock_total_value": "150000.00",
+            "note": "month end",
+        },
+    )
+
+    assert save_response.status_code == 200
+
+    response = client.get("/api/asset-snapshots")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "snapshots": [
+            {
+                "date": "2026-04-30",
+                "cash_or_balance_total": "20000.00",
+                "stock_total_value": "150000.00",
+                "note": "month end",
+            }
+        ]
+    }
+
+
+def test_asset_snapshot_endpoint_requires_non_empty_fields(client):
+    response = client.post(
+        "/api/asset-snapshots",
+        json={
+            "date": "2026-04-30",
+            "cash_or_balance_total": "",
+            "stock_total_value": "150000.00",
+            "note": "month end",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid asset snapshot payload."}
+
+
+def test_stock_record_endpoint_saves_record(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+
+    response = client.post(
+        "/api/stock-records",
+        json={
+            "date": "2026-04-30",
+            "stock_name": "ACME",
+            "stock_quantity": "10",
+            "stock_price": "100.00",
+            "stock_total_value": "1000.00",
+            "note": "brokerage",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "record": {
+            "date": "2026-04-30",
+            "stock_name": "ACME",
+            "stock_quantity": "10",
+            "stock_price": "100.00",
+            "stock_total_value": "1000.00",
+            "note": "brokerage",
+        }
+    }
+    assert [row.to_dict() for row in storage.list_stock_records()] == [response.get_json()["record"]]
+
+
+def test_stock_record_endpoint_lists_saved_records(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    save_response = client.post(
+        "/api/stock-records",
+        json={
+            "date": "2026-04-30",
+            "stock_name": "ACME",
+            "stock_quantity": "10",
+            "stock_price": "100.00",
+            "stock_total_value": "1000.00",
+            "note": "brokerage",
+        },
+    )
+
+    assert save_response.status_code == 200
+
+    response = client.get("/api/stock-records")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "records": [
+            {
+                "date": "2026-04-30",
+                "stock_name": "ACME",
+                "stock_quantity": "10",
+                "stock_price": "100.00",
+                "stock_total_value": "1000.00",
+                "note": "brokerage",
+            }
+        ]
+    }
+
+
+def test_stock_record_endpoint_requires_non_empty_fields(client):
+    response = client.post(
+        "/api/stock-records",
+        json={
+            "date": "2026-04-30",
+            "stock_name": "ACME",
+            "stock_quantity": "10",
+            "stock_price": "",
+            "stock_total_value": "1000.00",
+            "note": "brokerage",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid stock record payload."}
+
+
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
