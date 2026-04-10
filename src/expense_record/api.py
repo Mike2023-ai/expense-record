@@ -9,6 +9,7 @@ from expense_record.config import DEFAULT_EXCEL_PATH
 from expense_record.models import ExpenseRow, LedgerEntry, StatementImportRow
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import extract_expense_rows
+from expense_record.statement_import import normalize_statement_ledger_fields
 
 
 api = Blueprint("api", __name__, url_prefix="/api")
@@ -81,7 +82,7 @@ def import_statement():
             _normalize_statement_rows(import_statement_rows(statement_file.filename, raw_bytes)),
             source=source,
         )
-    except UnsupportedStatementFileError as exc:
+    except (UnsupportedStatementFileError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception:
         current_app.logger.exception("Statement import failed")
@@ -238,6 +239,9 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
     amount = _coerce_statement_save_field(payload, "amount")
     category = _coerce_statement_save_field(payload, "category")
     member = _coerce_statement_save_field(payload, "member")
+    source = _coerce_statement_save_field(payload, "source", allow_blank=True)
+    entry_type = _coerce_statement_save_field(payload, "entry_type", allow_blank=True)
+    note = _coerce_statement_save_field(payload, "note", allow_blank=True)
 
     if (
         transaction_time is None
@@ -250,14 +254,17 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
         return None
 
     try:
-        signed_amount = _normalize_signed_amount(direction, amount)
-    except ValueError:
-        return _DROP_STATEMENT_ROW
+        normalized_direction, signed_amount, default_entry_type = normalize_statement_ledger_fields(
+            direction,
+            amount,
+            minimum_amount=Decimal("1"),
+        )
+    except ValueError as exc:
+        if str(exc) == "Amount too small.":
+            return _DROP_STATEMENT_ROW
+        return None
     except InvalidOperation:
         return None
-
-    normalized_direction = "income" if direction in {"income", "收入"} else "expense"
-    entry_type = "income" if normalized_direction == "income" else "expense"
     return LedgerEntry(
         date=transaction_time,
         description=counterparty,
@@ -265,23 +272,14 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
         amount=signed_amount,
         category=category,
         member=member,
-        source="",
-        entry_type=entry_type,
-        note="",
+        source="" if source is None else source,
+        entry_type=default_entry_type if entry_type in (None, "") else entry_type,
+        note="" if note is None else note,
     )
 
 
 def _statement_row_is_effectively_blank(row: LedgerEntry) -> bool:
     return not any((row.date, row.description, row.direction, row.amount, row.category, row.member))
-
-
-def _normalize_signed_amount(direction: str, amount: str) -> str:
-    decimal_amount = abs(Decimal(amount))
-    if decimal_amount < Decimal("1"):
-        raise ValueError("Amount too small.")
-    sign = "+" if direction in {"income", "收入"} else "-"
-    return f"{sign}{decimal_amount.quantize(Decimal('0.01'))}"
-
 
 def _extract_save_rows_payload(payload: object) -> list[object] | None:
     if not isinstance(payload, dict):

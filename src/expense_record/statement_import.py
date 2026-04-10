@@ -85,11 +85,10 @@ def import_statement_rows(filename: str, raw_bytes: bytes) -> list[StatementImpo
 def statement_rows_to_review_rows(rows: list[StatementImportRow], *, source: str) -> list[LedgerEntry]:
     review_rows: list[LedgerEntry] = []
     for row in rows:
-        direction = _normalize_review_direction(row.direction)
-        entry_type = "income" if direction == "income" else "expense"
+        direction, amount, entry_type = normalize_statement_ledger_fields(row.direction, row.amount)
         review_rows.append(
             row.to_ledger_entry(
-                amount=_normalize_signed_amount(row.direction, row.amount),
+                amount=amount,
                 direction=direction,
                 source=source,
                 entry_type=entry_type,
@@ -256,14 +255,29 @@ def _normalize_amount(value: str) -> str:
     return format(normalized, "f")
 
 
-def _normalize_signed_amount(direction: str, amount: str) -> str:
+def normalize_statement_ledger_fields(
+    direction: str,
+    amount: str,
+    *,
+    minimum_amount: Decimal | None = None,
+) -> tuple[str, str, str]:
+    normalized_direction = _normalize_review_direction(direction)
     decimal_amount = abs(Decimal(amount))
-    sign = "+" if _normalize_review_direction(direction) == "income" else "-"
-    return f"{sign}{decimal_amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)}"
+    if minimum_amount is not None and decimal_amount < minimum_amount:
+        raise ValueError("Amount too small.")
+    sign = "+" if normalized_direction == "income" else "-"
+    normalized_amount = decimal_amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    entry_type = "income" if normalized_direction == "income" else "expense"
+    return normalized_direction, f"{sign}{normalized_amount}", entry_type
 
 
 def _normalize_review_direction(direction: str) -> str:
-    return "income" if direction.strip() in {"income", "收入"} else "expense"
+    normalized = direction.strip()
+    if normalized in {"income", "收入"}:
+        return "income"
+    if normalized in {"expense", "支出"}:
+        return "expense"
+    raise ValueError("Invalid direction.")
 
 
 def _read_alipay_csv_rows(raw_bytes: bytes) -> list[list[str]]:

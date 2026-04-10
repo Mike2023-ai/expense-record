@@ -355,6 +355,9 @@ function collectReviewRows() {
       amount: row.children[3].children[0].value.trim(),
       category: row.children[5].children[0].value.trim(),
       member: row.children[6].children[0].value.trim(),
+      source: row.children[7].children[0].value.trim(),
+      entry_type: row.children[8].children[0].value.trim(),
+      note: row.children[9].children[0].value.trim(),
     }));
   }
 

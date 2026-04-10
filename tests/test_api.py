@@ -408,8 +408,14 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
 
           elements["review-body"].children[0].children[5].children[0].value = "food";
           elements["review-body"].children[0].children[6].children[0].value = "Mike";
+          elements["review-body"].children[0].children[7].children[0].value = "wechat-edited";
+          elements["review-body"].children[0].children[8].children[0].value = "shared-expense";
+          elements["review-body"].children[0].children[9].children[0].value = "team lunch";
           elements["review-body"].children[1].children[5].children[0].value = "food";
           elements["review-body"].children[1].children[6].children[0].value = "Mike";
+          elements["review-body"].children[1].children[7].children[0].value = "wechat-edited";
+          elements["review-body"].children[1].children[8].children[0].value = "shared-expense";
+          elements["review-body"].children[1].children[9].children[0].value = "breakfast";
 
           elements["save-button"].listeners.click();
           const saveCall = fetchCalls.filter((call) => call.url === "/api/save").at(-1);
@@ -424,6 +430,9 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
                 amount: "-26.50",
                 category: "food",
                 member: "Mike",
+                source: "wechat-edited",
+                entry_type: "shared-expense",
+                note: "team lunch",
               },
               {
                 selected: true,
@@ -433,6 +442,9 @@ def test_frontend_statement_mode_selection_import_save_and_stale_responses():
                 amount: "-10.00",
                 category: "food",
                 member: "Mike",
+                source: "wechat-edited",
+                entry_type: "shared-expense",
+                note: "breakfast",
               },
             ],
           });
@@ -1523,6 +1535,29 @@ def test_statement_save_require_category(client):
     assert response.get_json() == {"error": "Invalid save payload."}
 
 
+def test_statement_save_rejects_invalid_direction(client):
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "transaction_time": "2026-04-10 12:00:00",
+                    "counterparty": "Lunch",
+                    "direction": "refund",
+                    "amount": "26.50",
+                    "category": "food",
+                    "member": "Mike",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid save payload."}
+
+
 def test_statement_save_drops_rows_below_one(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
@@ -1567,6 +1602,49 @@ def test_statement_save_drops_rows_below_one(tmp_path):
             "source": "",
             "entry_type": "expense",
             "note": "",
+        }
+    ]
+    assert [row.to_dict() for row in storage.list_ledger_entries()] == response.get_json()["rows"]
+
+
+def test_statement_save_persists_visible_source_entry_type_and_note(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+
+    response = client.post(
+        "/api/save",
+        json={
+            "mode": "statement",
+            "rows": [
+                {
+                    "selected": True,
+                    "transaction_time": "2026-04-10 12:01:00",
+                    "counterparty": "Coffee",
+                    "direction": "expense",
+                    "amount": "-12.50",
+                    "category": "food",
+                    "member": "Mike",
+                    "source": "wechat-edited",
+                    "entry_type": "shared-expense",
+                    "note": "office run",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["rows"] == [
+        {
+            "date": "2026-04-10 12:01:00",
+            "description": "Coffee",
+            "amount": "-12.50",
+            "direction": "expense",
+            "category": "food",
+            "member": "Mike",
+            "source": "wechat-edited",
+            "entry_type": "shared-expense",
+            "note": "office run",
         }
     ]
     assert [row.to_dict() for row in storage.list_ledger_entries()] == response.get_json()["rows"]

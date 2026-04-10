@@ -219,6 +219,21 @@ def test_statement_rows_to_review_rows_adds_blank_required_fields():
     ]
 
 
+def test_statement_rows_to_review_rows_rejects_invalid_direction():
+    with pytest.raises(ValueError, match="Invalid direction."):
+        statement_rows_to_review_rows(
+            [
+                StatementImportRow(
+                    transaction_time="2026-04-10 10:00:00",
+                    counterparty="Mystery",
+                    direction="退款",
+                    amount="10.00",
+                )
+            ],
+            source="wechat",
+        )
+
+
 def test_import_statement_rows_skips_wechat_footer_row_after_detail_table():
     rows = import_statement_rows("wechat.xlsx", _wechat_with_footer_fixture_bytes())
 
