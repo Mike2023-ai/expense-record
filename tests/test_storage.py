@@ -6,6 +6,7 @@ from expense_record.models import (
     MemberRecord,
     StockRecord,
 )
+from expense_record.config import DEFAULT_CATEGORIES
 from expense_record.storage import ExcelExpenseStorage
 from datetime import date, datetime
 from openpyxl import Workbook, load_workbook
@@ -337,23 +338,25 @@ def test_storage_replaces_categories_and_members_lists(tmp_path):
     )
 
     assert storage.list_categories() == [
-        CategoryRecord(
-            date="2026-04-10",
-            category="salary",
-            amount="5000.00",
-            direction="income",
-            note="Primary income",
-        )
+        CategoryRecord(category="salary"),
+        CategoryRecord(category="rounding"),
     ]
     assert storage.list_members() == [
-        MemberRecord(
-            date="2026-04-10",
-            member="Mike",
-            amount="5000.00",
-            direction="income",
-            note="Primary member",
-        )
+        MemberRecord(member="Mike"),
+        MemberRecord(member="Family"),
     ]
+
+
+def test_storage_list_categories_bootstraps_seeded_defaults_on_first_read(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    assert [row.category for row in storage.list_categories()] == list(DEFAULT_CATEGORIES)
+
+
+def test_storage_list_members_bootstraps_empty_sheet_on_first_read(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    assert storage.list_members() == []
 
 
 def test_storage_persists_asset_snapshots_and_stock_records(tmp_path):
@@ -518,22 +521,12 @@ def test_storage_filters_only_ledger_like_amount_rows_below_one(tmp_path):
         )
     ]
     assert storage.list_categories() == [
-        CategoryRecord(
-            date="2026-04-10",
-            category="salary",
-            amount="1.00",
-            direction="income",
-            note="Kept",
-        )
+        CategoryRecord(category="interest"),
+        CategoryRecord(category="salary"),
     ]
     assert storage.list_members() == [
-        MemberRecord(
-            date="2026-04-10",
-            member="Mike",
-            amount="-1.00",
-            direction="expense",
-            note="Kept",
-        )
+        MemberRecord(member="Child"),
+        MemberRecord(member="Mike"),
     ]
     assert storage.list_asset_snapshots() == [
         AssetSnapshot(

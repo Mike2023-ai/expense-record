@@ -13,7 +13,7 @@ import pytest
 from openpyxl import Workbook
 
 from expense_record.app import create_app
-from expense_record.config import DEFAULT_EXCEL_PATH, resolve_app_version
+from expense_record.config import DEFAULT_CATEGORIES, DEFAULT_EXCEL_PATH, resolve_app_version
 from expense_record.storage import ExcelExpenseStorage
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
@@ -1830,6 +1830,50 @@ def test_manual_entry_endpoint_rejects_invalid_direction(tmp_path):
     assert response.status_code == 400
     assert response.get_json() == {"error": "Invalid manual entry payload."}
     assert storage.list_ledger_entries() == []
+
+
+def test_categories_endpoint_returns_seeded_defaults(client):
+    response = client.get("/api/categories")
+
+    assert response.status_code == 200
+    assert "food" in response.get_json()["categories"]
+
+
+def test_categories_endpoint_adds_trimmed_category_once(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post("/api/categories", json={"name": "  travel  "})
+
+    assert response.status_code == 200
+    assert response.get_json()["categories"] == sorted([*DEFAULT_CATEGORIES, "travel"])
+
+    duplicate_response = client.post("/api/categories", json={"name": "travel"})
+
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.get_json()["categories"] == sorted([*DEFAULT_CATEGORIES, "travel"])
+
+
+def test_members_endpoint_returns_saved_members(client):
+    response = client.get("/api/members")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"members": []}
+
+
+def test_members_endpoint_adds_trimmed_member_once(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    response = client.post("/api/members", json={"name": "  Mike  "})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"members": ["Mike"]}
+
+    duplicate_response = client.post("/api/members", json={"name": "Mike"})
+
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.get_json() == {"members": ["Mike"]}
 
 
 def test_save_endpoint_rejects_malformed_payload(tmp_path):

@@ -9,6 +9,7 @@ from typing import Any, TypeVar
 
 from openpyxl import Workbook, load_workbook
 
+from expense_record.config import DEFAULT_CATEGORIES
 from expense_record.models import (
     AssetSnapshot,
     CategoryRecord,
@@ -57,13 +58,13 @@ class ExcelExpenseStorage:
     )
     _CATEGORIES_SPEC = _SheetSpec(
         name=categories_sheet_name,
-        headers=("date", "category", "amount", "direction", "note"),
-        fields=("date", "category", "amount", "direction", "note"),
+        headers=("category",),
+        fields=("category",),
     )
     _MEMBERS_SPEC = _SheetSpec(
         name=members_sheet_name,
-        headers=("date", "member", "amount", "direction", "note"),
-        fields=("date", "member", "amount", "direction", "note"),
+        headers=("member",),
+        fields=("member",),
     )
     _ASSET_SNAPSHOTS_SPEC = _SheetSpec(
         name=asset_snapshots_sheet_name,
@@ -98,16 +99,28 @@ class ExcelExpenseStorage:
         return self._list_records(self._LEDGER_SPEC, LedgerEntry)
 
     def replace_categories(self, rows: Iterable[CategoryRecord]) -> None:
-        self._replace_records(self._CATEGORIES_SPEC, self._filter_category_records(rows))
+        self._replace_records(self._CATEGORIES_SPEC, self._normalize_category_records(rows))
 
     def list_categories(self) -> list[CategoryRecord]:
+        self._ensure_category_defaults()
         return self._list_records(self._CATEGORIES_SPEC, CategoryRecord)
 
+    def add_category(self, name: str) -> list[CategoryRecord]:
+        records = self._normalize_category_records([*self.list_categories(), CategoryRecord(category=name)])
+        self._replace_records(self._CATEGORIES_SPEC, records)
+        return records
+
     def replace_members(self, rows: Iterable[MemberRecord]) -> None:
-        self._replace_records(self._MEMBERS_SPEC, self._filter_member_records(rows))
+        self._replace_records(self._MEMBERS_SPEC, self._normalize_member_records(rows))
 
     def list_members(self) -> list[MemberRecord]:
+        self._ensure_members_sheet()
         return self._list_records(self._MEMBERS_SPEC, MemberRecord)
+
+    def add_member(self, name: str) -> list[MemberRecord]:
+        records = self._normalize_member_records([*self.list_members(), MemberRecord(member=name)])
+        self._replace_records(self._MEMBERS_SPEC, records)
+        return records
 
     def append_asset_snapshots(self, rows: Iterable[AssetSnapshot]) -> None:
         self._append_records(self._ASSET_SNAPSHOTS_SPEC, rows)
@@ -203,11 +216,49 @@ class ExcelExpenseStorage:
     def _filter_ledger_entries(self, rows: Iterable[LedgerEntry]) -> list[LedgerEntry]:
         return [row for row in rows if _is_effective_amount(row.amount)]
 
-    def _filter_category_records(self, rows: Iterable[CategoryRecord]) -> list[CategoryRecord]:
-        return [row for row in rows if _is_effective_amount(row.amount)]
+    def _ensure_category_defaults(self) -> None:
+        workbook = self._load_or_create_workbook()
+        worksheet = self._get_sheet(workbook, self._CATEGORIES_SPEC)
+        if self._sheet_has_data(worksheet):
+            return
+        for name in DEFAULT_CATEGORIES:
+            worksheet.append([name])
+        workbook.save(self.workbook_path)
 
-    def _filter_member_records(self, rows: Iterable[MemberRecord]) -> list[MemberRecord]:
-        return [row for row in rows if _is_effective_amount(row.amount)]
+    def _ensure_members_sheet(self) -> None:
+        workbook = self._load_or_create_workbook()
+        worksheet = self._get_sheet(workbook, self._MEMBERS_SPEC)
+        if self._sheet_has_data(worksheet):
+            return
+        workbook.save(self.workbook_path)
+
+    def _sheet_has_data(self, worksheet) -> bool:
+        for values in worksheet.iter_rows(min_row=2, values_only=True):
+            if any(values):
+                return True
+        return False
+
+    def _normalize_category_records(self, rows: Iterable[CategoryRecord]) -> list[CategoryRecord]:
+        normalized: list[CategoryRecord] = []
+        seen: set[str] = set()
+        for row in rows:
+            name = row.category.strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            normalized.append(CategoryRecord(category=name))
+        return normalized
+
+    def _normalize_member_records(self, rows: Iterable[MemberRecord]) -> list[MemberRecord]:
+        normalized: list[MemberRecord] = []
+        seen: set[str] = set()
+        for row in rows:
+            name = row.member.strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            normalized.append(MemberRecord(member=name))
+        return normalized
 
 def _is_effective_amount(amount_text: str) -> bool:
     if not amount_text:

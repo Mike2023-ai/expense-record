@@ -35,6 +35,38 @@ def clear_rows():
     return jsonify({"rows": []})
 
 
+@api.get("/categories")
+def list_categories():
+    categories = sorted(row.category for row in _storage().list_categories())
+    return jsonify({"categories": categories})
+
+
+@api.post("/categories")
+def add_category():
+    name = _coerce_name_payload(request.get_json(silent=True), "name")
+    if name is None:
+        return jsonify({"error": "Invalid category payload."}), 400
+
+    categories = sorted(row.category for row in _storage().add_category(name))
+    return jsonify({"categories": categories})
+
+
+@api.get("/members")
+def list_members():
+    members = [row.member for row in _storage().list_members()]
+    return jsonify({"members": members})
+
+
+@api.post("/members")
+def add_member():
+    name = _coerce_name_payload(request.get_json(silent=True), "name")
+    if name is None:
+        return jsonify({"error": "Invalid member payload."}), 400
+
+    members = [row.member for row in _storage().add_member(name)]
+    return jsonify({"members": members})
+
+
 @api.post("/extract")
 def extract_row():
     image = request.files.get("image")
@@ -106,6 +138,10 @@ def _coerce_save_field(payload: object, field: str) -> str | None:
     if not value:
         return None
     return value
+
+
+def _coerce_name_payload(payload: object, field: str) -> str | None:
+    return _coerce_save_field(payload, field)
 
 
 @api.post("/save")

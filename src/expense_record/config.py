@@ -10,6 +10,16 @@ import tomllib
 
 APP_DATA_DIR = Path.home() / ".expense-screenshot-tool"
 DEFAULT_EXCEL_PATH = APP_DATA_DIR / "expenses.xlsx"
+DEFAULT_CATEGORIES = (
+    "food",
+    "cloth",
+    "commute",
+    "rent",
+    "insurance",
+    "operation fee",
+    "company",
+    "festival",
+)
 
 
 def resolve_excel_path() -> Path:
