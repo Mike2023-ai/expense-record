@@ -3,72 +3,73 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Expense Screenshot Tool</title>
+    <title>Family Finance Tool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   </head>
   <body>
     <main class="app-shell">
       <header class="hero">
-        <p class="eyebrow">Local OCR to Excel</p>
-        <h1>Expense Screenshot Tool</h1>
+        <p class="eyebrow">Family Finance Workspace</p>
+        <h1>Family Finance Tool</h1>
         <p class="app-version">Version {{ app_version }}</p>
         <p class="hero-copy">
-          Paste a screenshot anywhere on the page or upload one, review the extracted rows, then save them into Excel.
+          Import WeChat or Alipay files, paste screenshots anywhere on the page, assign category and member, then review cash flow and asset trends in one place.
         </p>
       </header>
 
-      <section class="panel">
+      <section class="panel grid-span-2">
         <div class="panel-header">
-          <h2>1. Add screenshot</h2>
-          <p>Use the file picker or paste an image anywhere on the page from the clipboard.</p>
+          <h2>Capture Or Import</h2>
+          <p>Use OCR for screenshots or import a statement file for bulk rows.</p>
         </div>
+        <div class="split-grid">
+          <div>
+            <h3>1. Add screenshot</h3>
+            <p class="section-copy">Use the file picker or paste an image anywhere on the page from the clipboard.</p>
+            <div id="paste-zone" class="paste-zone">
+              <span>Press Ctrl+V anywhere on the page to paste a screenshot</span>
+            </div>
+            <div class="upload-row">
+              <label class="field file-picker">
+                <span>Upload image</span>
+                <input id="file-input" type="file" accept="image/*">
+              </label>
+              <button id="extract-button" type="button">Extract</button>
+            </div>
+            <figure class="preview-card">
+              <img id="preview-image" class="preview-image" alt="Selected screenshot preview" hidden>
+              <figcaption id="preview-caption" class="preview-caption">No screenshot selected yet.</figcaption>
+            </figure>
+            <div id="ocr-lines-panel" class="ocr-lines-panel" hidden>
+              <p class="ocr-lines-label">Raw OCR lines</p>
+              <ul id="ocr-lines-list" class="ocr-lines-list"></ul>
+            </div>
+          </div>
 
-        <div id="paste-zone" class="paste-zone">
-          <span>Press Ctrl+V anywhere on the page to paste a screenshot</span>
+          <div>
+            <h3>1B. Import statement file</h3>
+            <p class="section-copy">Upload a supported WeChat or Alipay export file.</p>
+            <div class="upload-row">
+              <label class="field file-picker">
+                <span>Upload statement</span>
+                <input id="statement-file-input" type="file" accept=".xlsx,.csv">
+              </label>
+              <button id="import-statement-button" type="button">Import Statement</button>
+            </div>
+
+            <div class="status-card">
+              <p class="status-label">Current status</p>
+              <p id="status-message" class="status-message" aria-live="polite"></p>
+            </div>
+          </div>
         </div>
-
-        <div class="upload-row">
-          <label class="file-picker">
-            <span>Upload image</span>
-            <input id="file-input" type="file" accept="image/*">
-          </label>
-          <button id="extract-button" type="button">Extract</button>
-        </div>
-
-        <figure class="preview-card">
-          <img id="preview-image" class="preview-image" alt="Selected screenshot preview" hidden>
-          <figcaption id="preview-caption" class="preview-caption">No screenshot selected yet.</figcaption>
-        </figure>
-
-        <div id="ocr-lines-panel" class="ocr-lines-panel" hidden>
-          <p class="ocr-lines-label">Raw OCR lines</p>
-          <ul id="ocr-lines-list" class="ocr-lines-list"></ul>
-        </div>
-
-        <p id="status-message" class="status-message" aria-live="polite"></p>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>1B. Import statement file</h2>
-          <p>Upload a supported WeChat or Alipay export file.</p>
-        </div>
-
-        <div class="upload-row">
-          <label class="file-picker">
-            <span>Upload statement</span>
-            <input id="statement-file-input" type="file" accept=".xlsx,.csv">
-          </label>
-          <button id="import-statement-button" type="button">Import Statement</button>
-        </div>
-      </section>
-
-      <section class="panel">
+      <section class="panel grid-span-2">
         <div class="panel-header">
           <h2>2. Review rows</h2>
-          <p>Adjust the extracted values, uncheck any row you do not want, then save the selected rows.</p>
+          <p>Adjust imported values, uncheck rows you do not want, then save the selected rows.</p>
         </div>
-
         <div class="table-wrap">
           <table id="review-table" class="review-table">
             <thead>
@@ -82,20 +83,180 @@
             <tbody id="review-body"></tbody>
           </table>
         </div>
-
         <div class="form-actions">
           <button id="save-button" type="button" disabled>Save to Excel</button>
         </div>
       </section>
 
+      <section id="manual-entry-section" class="panel">
+        <div class="panel-header">
+          <h2>Manual Entry</h2>
+          <p>Add one transaction directly when it does not come from an import.</p>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Date</span>
+            <input id="manual-entry-date" type="date">
+          </label>
+          <label class="field">
+            <span>Description</span>
+            <input id="manual-entry-description" type="text" placeholder="Salary, rent, groceries">
+          </label>
+          <label class="field">
+            <span>Direction</span>
+            <select id="manual-entry-direction">
+              <option value="">Direction</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Amount</span>
+            <input id="manual-entry-amount" type="text" placeholder="1000.00">
+          </label>
+          <label class="field">
+            <span>Category</span>
+            <select id="manual-entry-category"></select>
+          </label>
+          <label class="field">
+            <span>Member</span>
+            <select id="manual-entry-member"></select>
+          </label>
+          <label class="field">
+            <span>Entry type</span>
+            <input id="manual-entry-entry-type" type="text" placeholder="expense, salary, transfer">
+          </label>
+          <label class="field field-wide">
+            <span>Note</span>
+            <input id="manual-entry-note" type="text" placeholder="Optional note">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button id="manual-entry-button" type="button">Save Manual Entry</button>
+        </div>
+      </section>
+
       <section class="panel">
+        <div class="panel-header">
+          <h2>Reference Setup</h2>
+          <p>Maintain members and categories used across imports and manual entries.</p>
+        </div>
+        <div class="stack-form">
+          <div class="inline-form">
+            <label class="field">
+              <span>New category</span>
+              <input id="category-name" type="text" placeholder="food">
+            </label>
+            <button id="add-category-button" type="button">Add Category</button>
+          </div>
+          <ul id="category-options" class="token-list"></ul>
+          <div class="inline-form">
+            <label class="field">
+              <span>New member</span>
+              <input id="member-name" type="text" placeholder="Mike">
+            </label>
+            <button id="add-member-button" type="button">Add Member</button>
+          </div>
+          <ul id="member-options" class="token-list"></ul>
+        </div>
+      </section>
+
+      <section id="asset-snapshot-section" class="panel">
+        <div class="panel-header">
+          <h2>Asset Snapshot</h2>
+          <p>Record monthly total cash and stock balances for the balance sheet view.</p>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Date</span>
+            <input id="asset-snapshot-date" type="date">
+          </label>
+          <label class="field">
+            <span>Cash / balance total</span>
+            <input id="asset-snapshot-cash" type="text" placeholder="8000.00">
+          </label>
+          <label class="field">
+            <span>Stock total value</span>
+            <input id="asset-snapshot-stock" type="text" placeholder="12000.00">
+          </label>
+          <label class="field field-wide">
+            <span>Note</span>
+            <input id="asset-snapshot-note" type="text" placeholder="Month-end snapshot">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button id="asset-snapshot-button" type="button">Save Asset Snapshot</button>
+        </div>
+      </section>
+
+      <section id="stock-record-section" class="panel">
+        <div class="panel-header">
+          <h2>Stock Record</h2>
+          <p>Track stock positions manually in the first version.</p>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Date</span>
+            <input id="stock-record-date" type="date">
+          </label>
+          <label class="field">
+            <span>Stock name</span>
+            <input id="stock-record-name" type="text" placeholder="Tencent">
+          </label>
+          <label class="field">
+            <span>Quantity</span>
+            <input id="stock-record-quantity" type="text" placeholder="100">
+          </label>
+          <label class="field">
+            <span>Price</span>
+            <input id="stock-record-price" type="text" placeholder="420.50">
+          </label>
+          <label class="field">
+            <span>Total value</span>
+            <input id="stock-record-total-value" type="text" placeholder="42050.00">
+          </label>
+          <label class="field field-wide">
+            <span>Note</span>
+            <input id="stock-record-note" type="text" placeholder="Strategy note">
+          </label>
+        </div>
+        <div class="form-actions">
+          <button id="stock-record-button" type="button">Save Stock Record</button>
+        </div>
+      </section>
+
+      <section id="dashboard-section" class="panel grid-span-2">
+        <div class="panel-header">
+          <h2>Dashboard</h2>
+          <p>Use this page as the monthly review screen for spending, cash flow, and assets.</p>
+        </div>
+        <div class="dashboard-grid">
+          <article class="dashboard-card">
+            <h3>Expense by category</h3>
+            <ul id="dashboard-expense-category" class="dashboard-list"></ul>
+          </article>
+          <article class="dashboard-card">
+            <h3>Member by category</h3>
+            <ul id="dashboard-member-category" class="dashboard-list"></ul>
+          </article>
+          <article class="dashboard-card">
+            <h3>Cash flow</h3>
+            <ul id="dashboard-cash-flow" class="dashboard-list"></ul>
+          </article>
+          <article class="dashboard-card">
+            <h3>Asset trend</h3>
+            <ul id="dashboard-assets" class="dashboard-list"></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel grid-span-2">
         <div class="panel-header">
           <h2>Saved records</h2>
           <p>Rows already persisted in the Excel file.</p>
         </div>
-
         <div class="table-wrap">
-          <table id="records-table">
+          <table id="records-table" class="review-table">
             <thead>
               <tr>
                 <th>Date</th>
@@ -107,7 +268,6 @@
             <tbody id="records-body"></tbody>
           </table>
         </div>
-
         <div class="form-actions">
           <button id="copy-all-button" type="button">Copy All</button>
           <button id="clear-history-button" type="button" class="danger-button">Clear History</button>

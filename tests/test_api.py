@@ -95,6 +95,19 @@ def test_index_page_shows_app_version():
     assert f"Version {expected_version}".encode() in response.data
 
 
+def test_index_page_contains_family_finance_sections():
+    app = create_app({"TESTING": True})
+    client = app.test_client()
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert b'id="manual-entry-section"' in response.data
+    assert b'id="asset-snapshot-section"' in response.data
+    assert b'id="stock-record-section"' in response.data
+    assert b'id="dashboard-section"' in response.data
+
+
 def test_frontend_statement_mode_selection_import_save_and_stale_responses():
     script = textwrap.dedent(
         """
@@ -885,6 +898,716 @@ def test_frontend_copy_all_ignores_empty_saved_records_state():
     subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
 
 
+def test_frontend_prevents_saving_imported_row_without_category_or_member():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            files: [],
+            listeners: {},
+            children: [],
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
+        };
+        elements["preview-image"].hidden = true;
+        const documentListeners = {};
+        const pendingImportResponses = [];
+        const fetchCalls = [];
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {},
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url, options = {}) => {
+            fetchCalls.push({ url, options });
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/import-statement") {
+              return await new Promise((resolve) => pendingImportResponses.push(resolve));
+            }
+            if (url === "/api/save") {
+              throw new Error("save should not be called");
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            addEventListener(type, handler) {
+              documentListeners[type] = handler;
+            },
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          elements["statement-file-input"].listeners.change({
+            target: {
+              files: [{ name: "wechat.xlsx", type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }],
+            },
+          });
+
+          elements["import-statement-button"].listeners.click();
+          pendingImportResponses.shift()({
+            ok: true,
+            json: async () => ({
+              rows: [
+                {
+                  date: "2026-04-10 10:00:00",
+                  description: "Lunch",
+                  amount: "-26.50",
+                  direction: "expense",
+                  category: "",
+                  member: "",
+                  source: "wechat",
+                  entry_type: "expense",
+                  note: "",
+                },
+              ],
+            }),
+          });
+          await flush();
+
+          elements["save-button"].listeners.click();
+          await flush();
+
+          assert.strictEqual(elements["status-message"].textContent, "Category and member are required.");
+          assert.strictEqual(fetchCalls.filter((call) => call.url === "/api/save").length, 0);
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
+def test_frontend_manual_entry_posts_valid_payload():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            files: [],
+            listeners: {},
+            children: [],
+            dataset: {},
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
+          "manual-entry-date": makeElement("manual-entry-date"),
+          "manual-entry-description": makeElement("manual-entry-description"),
+          "manual-entry-direction": makeElement("manual-entry-direction"),
+          "manual-entry-amount": makeElement("manual-entry-amount"),
+          "manual-entry-category": makeElement("manual-entry-category"),
+          "manual-entry-member": makeElement("manual-entry-member"),
+          "manual-entry-entry-type": makeElement("manual-entry-entry-type"),
+          "manual-entry-note": makeElement("manual-entry-note"),
+          "manual-entry-button": makeElement("manual-entry-button"),
+          "category-options": makeElement("category-options"),
+          "member-options": makeElement("member-options"),
+          "dashboard-expense-category": makeElement("dashboard-expense-category"),
+          "dashboard-member-category": makeElement("dashboard-member-category"),
+          "dashboard-cash-flow": makeElement("dashboard-cash-flow"),
+          "dashboard-assets": makeElement("dashboard-assets"),
+        };
+        elements["preview-image"].hidden = true;
+        const fetchCalls = [];
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {},
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url, options = {}) => {
+            fetchCalls.push({ url, options });
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/categories") {
+              return { ok: true, json: async () => ({ categories: ["food", "rent"] }) };
+            }
+            if (url === "/api/members") {
+              return { ok: true, json: async () => ({ members: ["Mike", "Family"] }) };
+            }
+            if (url === "/api/dashboard") {
+              return {
+                ok: true,
+                json: async () => ({
+                  expense_by_category: [],
+                  expense_by_member_category: [],
+                  cash_flow: [],
+                  asset_trend: [],
+                }),
+              };
+            }
+            if (url === "/api/manual-entry") {
+              return {
+                ok: true,
+                json: async () => ({
+                  row: {
+                    date: "2026-04-11",
+                    description: "Lunch",
+                    direction: "expense",
+                    amount: "-26.50",
+                    category: "food",
+                    member: "Mike",
+                    source: "manual",
+                    entry_type: "expense",
+                    note: "weekday lunch",
+                  },
+                }),
+              };
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            addEventListener() {},
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          await flush();
+
+          elements["manual-entry-date"].value = "2026-04-11";
+          elements["manual-entry-description"].value = "Lunch";
+          elements["manual-entry-direction"].value = "expense";
+          elements["manual-entry-amount"].value = "26.50";
+          elements["manual-entry-category"].value = "food";
+          elements["manual-entry-member"].value = "Mike";
+          elements["manual-entry-entry-type"].value = "expense";
+          elements["manual-entry-note"].value = "weekday lunch";
+
+          elements["manual-entry-button"].listeners.click();
+          await flush();
+
+          const call = fetchCalls.find((entry) => entry.url === "/api/manual-entry");
+          assert.ok(call);
+          assert.deepStrictEqual(JSON.parse(call.options.body), {
+            date: "2026-04-11",
+            description: "Lunch",
+            direction: "expense",
+            amount: "26.50",
+            category: "food",
+            member: "Mike",
+            entry_type: "expense",
+            note: "weekday lunch",
+          });
+          assert.strictEqual(elements["status-message"].textContent, "Manual entry saved.");
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
+def test_frontend_asset_snapshot_posts_valid_payload():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            files: [],
+            listeners: {},
+            children: [],
+            dataset: {},
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
+          "asset-snapshot-date": makeElement("asset-snapshot-date"),
+          "asset-snapshot-cash": makeElement("asset-snapshot-cash"),
+          "asset-snapshot-stock": makeElement("asset-snapshot-stock"),
+          "asset-snapshot-note": makeElement("asset-snapshot-note"),
+          "asset-snapshot-button": makeElement("asset-snapshot-button"),
+          "category-options": makeElement("category-options"),
+          "member-options": makeElement("member-options"),
+          "dashboard-expense-category": makeElement("dashboard-expense-category"),
+          "dashboard-member-category": makeElement("dashboard-member-category"),
+          "dashboard-cash-flow": makeElement("dashboard-cash-flow"),
+          "dashboard-assets": makeElement("dashboard-assets"),
+        };
+        elements["preview-image"].hidden = true;
+        const fetchCalls = [];
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {},
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url, options = {}) => {
+            fetchCalls.push({ url, options });
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/categories") {
+              return { ok: true, json: async () => ({ categories: [] }) };
+            }
+            if (url === "/api/members") {
+              return { ok: true, json: async () => ({ members: [] }) };
+            }
+            if (url === "/api/dashboard") {
+              return {
+                ok: true,
+                json: async () => ({
+                  expense_by_category: [],
+                  expense_by_member_category: [],
+                  cash_flow: [],
+                  asset_trend: [],
+                }),
+              };
+            }
+            if (url === "/api/asset-snapshots") {
+              return {
+                ok: true,
+                json: async () => ({
+                  snapshot: {
+                    date: "2026-04-11",
+                    cash_or_balance_total: "8000.00",
+                    stock_total_value: "12000.00",
+                    note: "month end",
+                  },
+                }),
+              };
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            addEventListener() {},
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          await flush();
+
+          elements["asset-snapshot-date"].value = "2026-04-11";
+          elements["asset-snapshot-cash"].value = "8000";
+          elements["asset-snapshot-stock"].value = "12000";
+          elements["asset-snapshot-note"].value = "month end";
+
+          elements["asset-snapshot-button"].listeners.click();
+          await flush();
+
+          const call = fetchCalls.find((entry) => entry.url === "/api/asset-snapshots");
+          assert.ok(call);
+          assert.deepStrictEqual(JSON.parse(call.options.body), {
+            date: "2026-04-11",
+            cash_or_balance_total: "8000",
+            stock_total_value: "12000",
+            note: "month end",
+          });
+          assert.strictEqual(elements["status-message"].textContent, "Asset snapshot saved.");
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
+def test_frontend_dashboard_loads_reference_data_and_renders_summary():
+    script = textwrap.dedent(
+        """
+        const fs = require("fs");
+        const vm = require("vm");
+        const path = require("path");
+        const assert = require("assert");
+
+        const source = fs.readFileSync(path.join(process.cwd(), "src/expense_record/static/app.js"), "utf8");
+
+        function makeElement(id) {
+          return {
+            id,
+            disabled: false,
+            hidden: false,
+            value: "",
+            checked: false,
+            textContent: "",
+            innerHTML: "",
+            className: "",
+            type: "",
+            src: "",
+            style: {},
+            files: [],
+            listeners: {},
+            children: [],
+            dataset: {},
+            addEventListener(type, handler) {
+              this.listeners[type] = handler;
+            },
+            appendChild(child) {
+              this.children.push(child);
+            },
+            removeChild(child) {
+              const index = this.children.indexOf(child);
+              if (index >= 0) {
+                this.children.splice(index, 1);
+              }
+              return child;
+            },
+            replaceChildren(...children) {
+              this.children = [...children];
+            },
+            removeAttribute(name) {
+              if (name === "src") {
+                this.src = "";
+              }
+            },
+          };
+        }
+
+        const elements = {
+          "file-input": makeElement("file-input"),
+          "paste-zone": makeElement("paste-zone"),
+          "preview-image": makeElement("preview-image"),
+          "preview-caption": makeElement("preview-caption"),
+          "statement-file-input": makeElement("statement-file-input"),
+          "import-statement-button": makeElement("import-statement-button"),
+          "extract-button": makeElement("extract-button"),
+          "save-button": makeElement("save-button"),
+          "status-message": makeElement("status-message"),
+          "ocr-lines-panel": makeElement("ocr-lines-panel"),
+          "ocr-lines-list": makeElement("ocr-lines-list"),
+          "review-table": makeElement("review-table"),
+          "review-header": makeElement("review-header"),
+          "review-body": makeElement("review-body"),
+          "records-body": makeElement("records-body"),
+          "copy-all-button": makeElement("copy-all-button"),
+          "clear-history-button": makeElement("clear-history-button"),
+          "manual-entry-category": makeElement("manual-entry-category"),
+          "manual-entry-member": makeElement("manual-entry-member"),
+          "category-options": makeElement("category-options"),
+          "member-options": makeElement("member-options"),
+          "dashboard-expense-category": makeElement("dashboard-expense-category"),
+          "dashboard-member-category": makeElement("dashboard-member-category"),
+          "dashboard-cash-flow": makeElement("dashboard-cash-flow"),
+          "dashboard-assets": makeElement("dashboard-assets"),
+        };
+        elements["preview-image"].hidden = true;
+
+        const sandbox = {
+          console,
+          process,
+          FileReader: class {},
+          File: class {},
+          FormData: class {
+            append() {}
+          },
+          setTimeout,
+          clearTimeout,
+          fetch: async (url) => {
+            if (url === "/api/rows") {
+              return { ok: true, json: async () => ({ rows: [] }) };
+            }
+            if (url === "/api/categories") {
+              return { ok: true, json: async () => ({ categories: ["food", "rent"] }) };
+            }
+            if (url === "/api/members") {
+              return { ok: true, json: async () => ({ members: ["Mike", "Jane"] }) };
+            }
+            if (url === "/api/dashboard") {
+              return {
+                ok: true,
+                json: async () => ({
+                  expense_by_category: [{ category: "food", amount: "120.00" }],
+                  expense_by_member_category: [{ member: "Mike", category: "food", amount: "80.00" }],
+                  cash_flow: [{ month: "2026-04", income_total: "10000.00", expense_total: "4200.00", net_total: "5800.00" }],
+                  asset_trend: [{ month: "2026-04", cash_or_balance_total: "8000.00", stock_total_value: "12000.00", total_assets: "20000.00" }],
+                }),
+              };
+            }
+            throw new Error(`Unexpected fetch: ${url}`);
+          },
+          document: {
+            addEventListener() {},
+            getElementById(id) {
+              return elements[id];
+            },
+            createElement(tag) {
+              const element = makeElement(`created-${String(tag).toLowerCase()}`);
+              element.tagName = String(tag).toUpperCase();
+              element.colSpan = 0;
+              return element;
+            },
+          },
+        };
+        sandbox.window = sandbox;
+        sandbox.globalThis = sandbox;
+
+        vm.runInNewContext(source, sandbox, { filename: "app.js" });
+
+        function flush() {
+          return new Promise((resolve) => setImmediate(resolve));
+        }
+
+        async function main() {
+          await flush();
+          await flush();
+
+          assert.strictEqual(elements["manual-entry-category"].children.length, 3);
+          assert.strictEqual(elements["manual-entry-member"].children.length, 3);
+          assert.ok(elements["dashboard-expense-category"].children[0].textContent.includes("food"));
+          assert.ok(elements["dashboard-member-category"].children[0].textContent.includes("Mike"));
+          assert.ok(elements["dashboard-cash-flow"].children[0].textContent.includes("5800.00"));
+          assert.ok(elements["dashboard-assets"].children[0].textContent.includes("20000.00"));
+        }
+
+        main().catch((error) => {
+          console.error(error);
+          process.exit(1);
+        });
+        """
+    )
+
+    subprocess.run(["node", "-e", script], check=True, cwd=PROJECT_ROOT)
+
+
 def test_imported_wechat_rows_can_be_saved(client):
     response = client.post(
         "/api/import-statement",
@@ -1053,7 +1776,7 @@ def test_index_page_loads_from_installed_package(tmp_path):
         client = app.test_client()
         response = client.get("/")
         assert response.status_code == 200
-        assert b"Expense Screenshot Tool" in response.data
+        assert b"Family Finance Tool" in response.data
         assert client.get("/static/app.css").status_code == 200
         assert client.get("/static/app.js").status_code == 200
         """
