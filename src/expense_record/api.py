@@ -6,6 +6,12 @@ from pathlib import Path
 from flask import Blueprint, current_app, jsonify, request
 
 from expense_record.config import DEFAULT_EXCEL_PATH
+from expense_record.dashboard import (
+    build_asset_trend,
+    build_category_expense_summary,
+    build_member_category_summary,
+    build_monthly_cash_flow_summary,
+)
 from expense_record.models import AssetSnapshot, ExpenseRow, LedgerEntry, StatementImportRow, StockRecord
 from expense_record.ocr import run_ocr_lines
 from expense_record.parser import extract_expense_rows
@@ -99,6 +105,21 @@ def save_stock_record():
 
     _storage().append_stock_record(record)
     return jsonify({"record": record.to_dict()})
+
+
+@api.get("/dashboard")
+def dashboard_summary():
+    storage = _storage()
+    ledger = storage.list_ledger_entries()
+    snapshots = storage.list_asset_snapshots()
+    return jsonify(
+        {
+            "expense_by_category": build_category_expense_summary(ledger),
+            "expense_by_member_category": build_member_category_summary(ledger),
+            "cash_flow": build_monthly_cash_flow_summary(ledger),
+            "asset_trend": build_asset_trend(snapshots),
+        }
+    )
 
 
 @api.post("/extract")

@@ -14,6 +14,7 @@ from openpyxl import Workbook
 
 from expense_record.app import create_app
 from expense_record.config import DEFAULT_CATEGORIES, DEFAULT_EXCEL_PATH, resolve_app_version
+from expense_record.models import AssetSnapshot, LedgerEntry
 from expense_record.storage import ExcelExpenseStorage
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
@@ -2042,6 +2043,89 @@ def test_stock_record_endpoint_requires_non_empty_fields(client):
 
     assert response.status_code == 400
     assert response.get_json() == {"error": "Invalid stock record payload."}
+
+
+def test_dashboard_endpoint_returns_expected_aggregates(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+    storage.append_ledger_entries(
+        [
+            LedgerEntry(
+                date="2026-04-01",
+                description="Salary",
+                amount="+5000.00",
+                direction="income",
+                category="salary",
+                member="Mike",
+                source="manual",
+                entry_type="income",
+                note="",
+            ),
+            LedgerEntry(
+                date="2026-04-02",
+                description="Lunch",
+                amount="-26.50",
+                direction="expense",
+                category="food",
+                member="Mike",
+                source="manual",
+                entry_type="expense",
+                note="",
+            ),
+            LedgerEntry(
+                date="2026-04-03",
+                description="Rent",
+                amount="-1500.00",
+                direction="expense",
+                category="rent",
+                member="Lucy",
+                source="manual",
+                entry_type="expense",
+                note="",
+            ),
+        ]
+    )
+    storage.append_asset_snapshots(
+        [
+            AssetSnapshot(
+                date="2026-04-30",
+                cash_or_balance_total="20000.00",
+                stock_total_value="150000.00",
+                note="month end",
+            )
+        ]
+    )
+
+    response = client.get("/api/dashboard")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "expense_by_category": [
+            {"category": "food", "amount": "26.50"},
+            {"category": "rent", "amount": "1500.00"},
+        ],
+        "expense_by_member_category": [
+            {"member": "Lucy", "category": "rent", "amount": "1500.00"},
+            {"member": "Mike", "category": "food", "amount": "26.50"},
+        ],
+        "cash_flow": [
+            {
+                "month": "2026-04",
+                "income_total": "5000.00",
+                "expense_total": "1526.50",
+                "net_total": "3473.50",
+            }
+        ],
+        "asset_trend": [
+            {
+                "month": "2026-04",
+                "cash_or_balance_total": "20000.00",
+                "stock_total_value": "150000.00",
+                "total_assets": "170000.00",
+            }
+        ],
+    }
 
 
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
