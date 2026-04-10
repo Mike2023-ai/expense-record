@@ -244,49 +244,17 @@ def _normalize_selected_statement_save_row(payload: object) -> LedgerEntry | boo
     if not selected:
         return False
 
-    transaction_time = _coerce_statement_save_field(payload, "transaction_time")
-    counterparty = _coerce_statement_save_field(payload, "counterparty")
-    direction = _coerce_statement_save_field(payload, "direction")
-    amount = _coerce_statement_save_field(payload, "amount")
-    category = _coerce_statement_save_field(payload, "category")
-    member = _coerce_statement_save_field(payload, "member")
     source = _coerce_statement_save_field(payload, "source", allow_blank=True)
-    entry_type = _coerce_statement_save_field(payload, "entry_type", allow_blank=True)
-    note = _coerce_statement_save_field(payload, "note", allow_blank=True)
-
-    if (
-        transaction_time is None
-        or counterparty is None
-        or direction is None
-        or amount is None
-        or category is None
-        or member is None
-    ):
-        return None
-
-    try:
-        normalized_direction, signed_amount, default_entry_type = normalize_statement_ledger_fields(
-            direction,
-            amount,
-            minimum_amount=Decimal("1"),
-        )
-    except ValueError as exc:
-        if str(exc) == "Amount too small.":
-            return _DROP_STATEMENT_ROW
-        return None
-    except InvalidOperation:
-        return None
-    return LedgerEntry(
-        date=transaction_time,
-        description=counterparty,
-        direction=normalized_direction,
-        amount=signed_amount,
-        category=category,
-        member=member,
-        source="" if source is None else source,
-        entry_type=default_entry_type if entry_type in (None, "") else entry_type,
-        note="" if note is None else note,
+    row = _normalize_ledger_entry_payload(
+        payload,
+        date_field="transaction_time",
+        description_field="counterparty",
+        source=source,
+        drop_small_amount=True,
     )
+    if row is _DROP_STATEMENT_ROW:
+        return _DROP_STATEMENT_ROW
+    return row
 
 
 def _statement_row_is_effectively_blank(row: LedgerEntry) -> bool:
@@ -294,8 +262,24 @@ def _statement_row_is_effectively_blank(row: LedgerEntry) -> bool:
 
 
 def _normalize_manual_entry_payload(payload: object) -> LedgerEntry | None:
-    date = _coerce_statement_save_field(payload, "date")
-    description = _coerce_statement_save_field(payload, "description")
+    return _normalize_ledger_entry_payload(
+        payload,
+        date_field="date",
+        description_field="description",
+        source="manual",
+    )
+
+
+def _normalize_ledger_entry_payload(
+    payload: object,
+    *,
+    date_field: str,
+    description_field: str,
+    source: str | None,
+    drop_small_amount: bool = False,
+) -> LedgerEntry | object | None:
+    date = _coerce_statement_save_field(payload, date_field)
+    description = _coerce_statement_save_field(payload, description_field)
     direction = _coerce_statement_save_field(payload, "direction")
     amount = _coerce_statement_save_field(payload, "amount")
     category = _coerce_statement_save_field(payload, "category")
@@ -319,17 +303,21 @@ def _normalize_manual_entry_payload(payload: object) -> LedgerEntry | None:
             amount,
             minimum_amount=Decimal("1"),
         )
-    except (InvalidOperation, ValueError):
+    except ValueError as exc:
+        if drop_small_amount and str(exc) == "Amount too small.":
+            return _DROP_STATEMENT_ROW
+        return None
+    except InvalidOperation:
         return None
 
     return LedgerEntry(
         date=date,
         description=description,
-        amount=signed_amount,
         direction=normalized_direction,
+        amount=signed_amount,
         category=category,
         member=member,
-        source="manual",
+        source="" if source is None else source,
         entry_type=default_entry_type if entry_type in (None, "") else entry_type,
         note="" if note is None else note,
     )

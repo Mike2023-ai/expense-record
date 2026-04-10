@@ -1808,6 +1808,30 @@ def test_manual_entry_endpoint_rejects_amounts_below_one(tmp_path):
     assert storage.list_ledger_entries() == []
 
 
+def test_manual_entry_endpoint_rejects_invalid_direction(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+    storage = ExcelExpenseStorage(tmp_path / "expenses.xlsx")
+
+    response = client.post(
+        "/api/manual-entry",
+        json={
+            "date": "2026-04-10",
+            "description": "Interest",
+            "amount": "26.50",
+            "direction": "refund",
+            "category": "interest",
+            "member": "Mike",
+            "entry_type": "income",
+            "note": "",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "Invalid manual entry payload."}
+    assert storage.list_ledger_entries() == []
+
+
 def test_save_endpoint_rejects_malformed_payload(tmp_path):
     app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
     client = app.test_client()
