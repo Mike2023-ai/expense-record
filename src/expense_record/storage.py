@@ -218,9 +218,14 @@ class ExcelExpenseStorage:
 
     def _ensure_category_defaults(self) -> None:
         workbook = self._load_or_create_workbook()
-        worksheet = self._get_sheet(workbook, self._CATEGORIES_SPEC)
-        if self._sheet_has_data(worksheet):
-            return
+        if self._CATEGORIES_SPEC.name not in workbook.sheetnames:
+            worksheet = workbook.create_sheet(self._CATEGORIES_SPEC.name)
+            self._write_headers(worksheet, self._CATEGORIES_SPEC.headers)
+        else:
+            worksheet = workbook[self._CATEGORIES_SPEC.name]
+            if not self._sheet_needs_headers(worksheet):
+                return
+            self._write_headers(worksheet, self._CATEGORIES_SPEC.headers)
         for name in DEFAULT_CATEGORIES:
             worksheet.append([name])
         workbook.save(self.workbook_path)

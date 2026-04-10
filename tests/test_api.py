@@ -1836,7 +1836,7 @@ def test_categories_endpoint_returns_seeded_defaults(client):
     response = client.get("/api/categories")
 
     assert response.status_code == 200
-    assert "food" in response.get_json()["categories"]
+    assert response.get_json() == {"categories": sorted(DEFAULT_CATEGORIES)}
 
 
 def test_categories_endpoint_adds_trimmed_category_once(tmp_path):
@@ -1859,6 +1859,19 @@ def test_members_endpoint_returns_saved_members(client):
 
     assert response.status_code == 200
     assert response.get_json() == {"members": []}
+
+
+def test_members_endpoint_returns_persisted_members_in_insertion_order(tmp_path):
+    app = create_app({"TESTING": True, "EXCEL_PATH": tmp_path / "expenses.xlsx"})
+    client = app.test_client()
+
+    client.post("/api/members", json={"name": "Mike"})
+    client.post("/api/members", json={"name": "Family"})
+
+    response = client.get("/api/members")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"members": ["Mike", "Family"]}
 
 
 def test_members_endpoint_adds_trimmed_member_once(tmp_path):

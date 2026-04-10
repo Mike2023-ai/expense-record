@@ -353,6 +353,15 @@ def test_storage_list_categories_bootstraps_seeded_defaults_on_first_read(tmp_pa
     assert [row.category for row in storage.list_categories()] == list(DEFAULT_CATEGORIES)
 
 
+def test_storage_list_categories_stays_empty_after_explicit_replace(tmp_path):
+    storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
+
+    storage.list_categories()
+    storage.replace_categories([])
+
+    assert storage.list_categories() == []
+
+
 def test_storage_list_members_bootstraps_empty_sheet_on_first_read(tmp_path):
     storage = ExcelExpenseStorage(tmp_path / "family.xlsx")
 
